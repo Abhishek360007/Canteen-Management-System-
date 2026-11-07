@@ -5,6 +5,7 @@ import { Spinner } from './components/ui'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Account from './pages/Account'
+import Notifications from './pages/Notifications'
 import Menu from './pages/student/Menu'
 import Cart from './pages/student/Cart'
 import Orders from './pages/student/Orders'
@@ -71,6 +72,7 @@ export default function App() {
         <Route path="/admin/insights" element={<Guard roles={A}><Insights /></Guard>} />
 
         <Route path="/account" element={<Account />} />
+        <Route path="/notifications" element={<Notifications />} />
       </Route>
 
       <Route path="*" element={<Navigate to={user ? homeFor(user.role) : '/login'} replace />} />

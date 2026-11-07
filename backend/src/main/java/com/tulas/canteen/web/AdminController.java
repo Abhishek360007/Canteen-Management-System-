@@ -51,13 +51,15 @@ public class AdminController {
     private final SettingsService settings;
     private final TopupService topups;
     private final AuditService audit;
+    private final NotificationService notifications;
     private final LiveHub live;
     private final Clock clock;
 
     public AdminController(ReportService reports, UserRepository users, OrderRepository orders,
                            AnnouncementRepository announcements, AuditLogRepository auditLogs, MenuService menu,
                            WalletService wallet, AuthService auth, SettingsService settings, TopupService topups,
-                           AuditService audit, LiveHub live, Clock clock) {
+                           AuditService audit, LiveHub live, Clock clock, NotificationService notifications) {
+        this.notifications = notifications;
         this.reports = reports;
         this.users = users;
         this.orders = orders;
@@ -95,6 +97,8 @@ public class AdminController {
     public TxnView recharge(@AuthenticationPrincipal AuthUser me, @PathVariable Long id,
                             @Valid @RequestBody RechargeRequest r) {
         TxnView t = wallet.recharge(id, r.amount(), r.note(), me.name());
+        notifications.notify(id, "WALLET", AuditService.rupees(r.amount()) + " added to your wallet",
+                "Recharged at the canteen office. New balance " + AuditService.rupees(t.balanceAfter()) + ".", "/wallet");
         audit.record(me, "WALLET_RECHARGE", AuditService.who(auth.get(id)),
                 AuditService.rupees(r.amount()) + (r.note() == null || r.note().isBlank() ? "" : " · " + r.note().trim()));
         return t;

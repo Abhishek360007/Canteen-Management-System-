@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet } from 'react-router-dom'
 import {
   UtensilsCrossed, ShoppingBag, Receipt, Wallet, User, ChefHat, ScanLine, Boxes, IndianRupee,
-  LayoutDashboard, ListOrdered, Users, Menu as MenuIcon, Moon, Sun, Megaphone,
+  LayoutDashboard, ListOrdered, Users, Menu as MenuIcon, Moon, Sun, Megaphone, Bell,
 } from 'lucide-react'
 import { api } from '../api'
 import { useAuth } from '../context/AuthContext'
@@ -74,6 +74,28 @@ function AnnouncementBar() {
   )
 }
 
+/** Bell with unread count; live-updated, cleared when the notifications page is opened. */
+function NotificationBell() {
+  const [unread, setUnread] = useState(0)
+  const load = useCallback(() => api('/api/notifications/unread').then((r) => setUnread(r.unread)).catch(() => {}), [])
+  useEffect(() => {
+    load()
+    window.addEventListener('tc-unread', load)
+    return () => window.removeEventListener('tc-unread', load)
+  }, [load])
+  useLive('notification', load)
+  return (
+    <Link to="/notifications" className="relative rounded-xl p-2 text-ink-2 hover:bg-card-2" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}>
+      <Bell className="size-5" />
+      {unread > 0 && (
+        <span className="absolute right-0.5 top-0.5 grid h-4.5 min-w-4.5 place-items-center rounded-full bg-brand px-1 text-[10px] font-bold text-white">
+          {unread > 9 ? '9+' : unread}
+        </span>
+      )}
+    </Link>
+  )
+}
+
 export default function Layout() {
   const { user } = useAuth()
   const cart = useCart()
@@ -92,6 +114,7 @@ export default function Layout() {
             <CanteenPill canteen={canteen} />
             <span title={connected ? 'Live updates on' : 'Reconnecting…'}
               className={`size-2 rounded-full ${connected ? 'bg-good' : 'bg-muted'}`} />
+            <NotificationBell />
             <button onClick={toggle} className="rounded-xl p-2 text-ink-2 hover:bg-card-2" aria-label="Toggle dark mode">
               {dark ? <Sun className="size-5" /> : <Moon className="size-5" />}
             </button>

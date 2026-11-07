@@ -43,12 +43,15 @@ public class OrderService {
     private final LiveHub live;
     private final Clock clock;
     private final LoyaltyService loyalty;
+    private final NotificationService notifications;
     private final TransactionTemplate tx;
     private final SecureRandom random = new SecureRandom();
 
     public OrderService(OrderRepository orders, MenuItemRepository menu, UserRepository users,
                         DailyCounterRepository counters, CounterService counterService, WalletService wallet,
-                        SettingsService settings, LiveHub live, Clock clock, PlatformTransactionManager txm, LoyaltyService loyalty) {
+                        SettingsService settings, LiveHub live, Clock clock, PlatformTransactionManager txm, LoyaltyService loyalty,
+                        NotificationService notifications) {
+        this.notifications = notifications;
         this.tx = new TransactionTemplate(txm);
         this.loyalty = loyalty;
         this.orders = orders;
@@ -164,6 +167,17 @@ public class OrderService {
         qty.forEach((id, q) -> o.addItem(new OrderItem(dishes.get(id), q)));
         orders.save(o);
 
+        if (o.getPaymentMethod() == PaymentMethod.WALLET) {
+            notifications.notify(me.id(), "PAYMENT", "Paid ₹" + total.stripTrailingZeros().toPlainString() + " for order " + code,
+                    "From your wallet" + (redeem > 0 ? " · " + redeem + " points used" : "") + ". We'll tell you when it's ready.",
+                    "/orders/" + o.getId());
+        }
+        for (var e : qty.entrySet()) {
+            MenuItem m = dishes.get(e.getKey());
+            if (m.getStockToday() != null) {
+                notifications.checkLowStock(m.getId(), m.getName(), menu.stockOf(m.getId()), m.getDefaultStock());
+            }
+        }
         notifyChange(o);
         live.toEveryone("menu", Map.of("changed", true));
         return studentView(o);
@@ -232,6 +246,8 @@ public class OrderService {
                 if (cur == OrderStatus.READY) throw badMove(cur, next);
                 o.setStatus(next);
                 o.setReadyAt(Instant.now());
+                notifications.notify(o.getUser().getId(), "ORDER_READY", "Your food is ready! 🍽️",
+                        "Order " + o.getCode() + " · show your pickup code at the counter.", "/orders/" + o.getId());
             }
             case COLLECTED -> {
                 // Manual hand-over without OTP, e.g. the student's phone is dead. Staff decide.
@@ -242,8 +258,10 @@ public class OrderService {
                 if (cur != OrderStatus.READY) throw badMove(cur, next);
                 markNoShow(o);
             }
-            case CANCELLED -> cancel(o, reason == null || reason.isBlank() ? "Cancelled by the canteen" : reason.trim(),
-                    cur == OrderStatus.PLACED);
+            case CANCELLED -> {
+                cancel(o, reason == null || reason.isBlank() ? "Cancelled by the canteen" : reason.trim(), cur == OrderStatus.PLACED);
+                notifyCancelled(o);
+            }
             default -> throw badMove(cur, next);
         }
         notifyChange(o);
@@ -299,6 +317,7 @@ public class OrderService {
         List<Order> stale = orders.findByStatusInAndOrderDateBefore(ACTIVE, clock.today());
         stale.forEach(o -> {
             cancel(o, "Not completed before the canteen closed", o.getStatus() == OrderStatus.PLACED);
+            notifyCancelled(o);
             notifyChange(o);
         });
         return stale.size();
@@ -309,7 +328,18 @@ public class OrderService {
     /** Handed over: close the order and award reward points on what was paid. */
     private void collected(Order o) {
         close(o, OrderStatus.COLLECTED);
-        loyalty.earn(o);
+        int points = loyalty.earn(o);
+        if (points > 0) {
+            notifications.notify(o.getUser().getId(), "POINTS", "Enjoy your meal! +" + points + " points",
+                    "You earned " + points + " reward points on order " + o.getCode() + ".", "/rewards");
+        }
+    }
+
+    private void notifyCancelled(Order o) {
+        boolean refunded = o.getPaymentMethod() == PaymentMethod.WALLET;
+        notifications.notify(o.getUser().getId(), "REFUND", "Order " + o.getCode() + " was cancelled",
+                o.getCancelReason() + (refunded ? " · ₹" + o.getTotal().stripTrailingZeros().toPlainString() + " refunded to your wallet." : "."),
+                "/orders/" + o.getId());
     }
 
     private void cancel(Order o, String reason, boolean returnPlates) {
@@ -325,6 +355,8 @@ public class OrderService {
         releasePlates(o);
         o.setCancelReason("Not collected within the hold time");
         close(o, OrderStatus.NO_SHOW);
+        notifications.notify(o.getUser().getId(), "NO_SHOW", "Order " + o.getCode() + " wasn't collected",
+                "It was held for you but not picked up in time.", "/orders/" + o.getId());
     }
 
     private void releasePlates(Order o) {

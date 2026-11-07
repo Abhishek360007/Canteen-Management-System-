@@ -4,6 +4,7 @@ import { api, tokenStore } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { Button, Card, ErrorNote, Input, PageTitle, useToast } from '../components/ui'
+import PushToggle from '../components/PushToggle'
 
 export default function Account() {
   const { user, setUser, logout } = useAuth()
@@ -63,6 +64,8 @@ export default function Account() {
             </div>
           </div>
         </Card>
+
+        <PushToggle role={user.role} />
 
         <Card className="p-4">
           <h2 className="mb-3 font-semibold">Profile</h2>

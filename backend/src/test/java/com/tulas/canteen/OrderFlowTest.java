@@ -413,6 +413,59 @@ class OrderFlowTest {
     }
 
     @Test
+    void studentsAndKitchenGetTheRightNotifications() throws Exception {
+        String student = register("notify" + UUID.randomUUID() + "@college.edu");
+        String admin = login("admin@tulas.local", "Admin@123");
+        String kitchen = login("kitchen@tulas.local", "kitchen123");
+        long sid = call(get("/api/auth/me"), student, 200).get("id").asLong();
+        call(post("/api/admin/users/" + sid + "/recharge").content("{\"amount\":300}"), admin, 200);
+        long thali = idOf(call(get("/api/menu"), student, 200), "Veg Thali");
+
+        JsonNode a = call(post("/api/orders").content(orderJson(thali, 1, "WALLET", 0)), student, 201);
+        call(post("/api/kitchen/orders/" + a.get("id").asLong() + "/status").content("{\"status\":\"READY\"}"), kitchen, 200);
+        JsonNode b = call(post("/api/orders").content(orderJson(thali, 1, "WALLET", 0)), student, 201);
+        call(post("/api/kitchen/orders/" + b.get("id").asLong() + "/status").content("{\"status\":\"CANCELLED\",\"reason\":\"Item ran out\"}"), kitchen, 200);
+
+        JsonNode list = call(get("/api/notifications"), student, 200);
+        String all = list.get("items").toString();
+        assertThat(all).contains("added to your wallet")          // recharge
+                .contains("Paid ₹90 for order")                   // payment confirmation
+                .contains("Your food is ready")                  // ready
+                .contains("was cancelled").contains("₹90 refunded"); // cancelled by canteen + refund
+        assertThat(list.get("unread").asInt()).isGreaterThanOrEqualTo(5);
+        call(post("/api/notifications/read-all"), student, 204);
+        assertThat(call(get("/api/notifications/unread"), student, 200).get("unread").asInt()).isZero();
+
+        // Low stock goes to kitchen staff: set 4 plates of Veg Biryani, sell 2 → 2 left (≤ 3).
+        long biryani = idOf(call(get("/api/menu"), student, 200), "Veg Biryani");
+        call(put("/api/kitchen/menu/" + biryani + "/stock").content("{\"stockToday\":4,\"available\":true}"), kitchen, 200);
+        JsonNode c = call(post("/api/orders").content(orderJson(biryani, 2, "CASH", 0)), student, 201);
+        assertThat(call(get("/api/notifications"), kitchen, 200).get("items").toString()).contains("Veg Biryani is running low");
+        // Students never see kitchen alerts.
+        assertThat(call(get("/api/notifications"), student, 200).get("items").toString()).doesNotContain("running low");
+        // Leave the kitchen queue empty for other tests.
+        call(post("/api/orders/" + c.get("id").asLong() + "/cancel"), student, 200);
+        call(post("/api/kitchen/verify").content("{\"code\":\"" + a.get("code").asText() + "\",\"otp\":\"" + a.get("otp").asText() + "\"}"), kitchen, 200);
+    }
+
+    @Test
+    void pushSubscriptionsOnlyAcceptRealPushServices() throws Exception {
+        String student = register("push" + UUID.randomUUID() + "@college.edu");
+        String key = call(get("/api/push/key"), student, 200).get("publicKey").asText();
+        assertThat(java.util.Base64.getUrlDecoder().decode(key)).hasSize(65).startsWith((byte) 4); // uncompressed P-256 point
+
+        String keys = "\"keys\":{\"p256dh\":\"BNc\",\"auth\":\"tBH\"}";
+        // Internal / arbitrary addresses are refused (no SSRF through push).
+        call(post("/api/push/subscribe").content("{\"endpoint\":\"http://169.254.169.254/latest\"," + keys + "}"), student, 400);
+        call(post("/api/push/subscribe").content("{\"endpoint\":\"https://evil.example.com/fcm.googleapis.com\"," + keys + "}"), student, 400);
+        call(post("/api/push/subscribe").content("{\"endpoint\":\"https://fcm.googleapis.com.evil.com/x\"," + keys + "}"), student, 400);
+        // Official push services are accepted.
+        call(post("/api/push/subscribe").content("{\"endpoint\":\"https://fcm.googleapis.com/fcm/send/abc" + UUID.randomUUID() + "\"," + keys + "}"), student, 204);
+        assertThat(call(get("/api/push/key"), student, 200).get("devices").asInt()).isEqualTo(1);
+        call(post("/api/push/test"), student, 204);
+    }
+
+    @Test
     void standardMenuImportSkipsExistingDishes() throws Exception {
         String admin = login("admin@tulas.local", "Admin@123");
         // Demo mode already loaded the standard menu, so everything is skipped.

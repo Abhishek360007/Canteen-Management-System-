@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
-import { ArrowLeft, Bell, Check, Star } from 'lucide-react'
+import { ArrowLeft, Check, Star } from 'lucide-react'
 import { api, rupees, slotLabel, timeOf } from '../../api'
 import { useLive } from '../../context/LiveContext'
 import { QrImage, qrPayload } from '../../components/Qr'
+import PushToggle from '../../components/PushToggle'
 import { Button, Card, ErrorNote, Spinner, StatusBadge, useToast } from '../../components/ui'
 
 const STEPS = [['PLACED', 'Placed'], ['PREPARING', 'Cooking'], ['READY', 'Ready'], ['COLLECTED', 'Collected']]
@@ -24,7 +25,6 @@ export default function OrderPass() {
   const [order, setOrder] = useState(null)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
-  const [perm, setPerm] = useState(() => ('Notification' in window ? Notification.permission : 'unsupported'))
   const lastStatus = useRef(null)
 
   const load = useCallback(() =>
@@ -147,11 +147,7 @@ export default function OrderPass() {
         </div>
       </Card>
 
-      {active && perm === 'default' && (
-        <Button variant="soft" className="mt-4 w-full" onClick={() => Notification.requestPermission().then(setPerm)}>
-          <Bell className="size-4" /> Alert me when it's ready
-        </Button>
-      )}
+      {active && <div className="mt-4"><PushToggle compact /></div>}
 
       {order.status === 'PLACED' && (
         <Button variant="danger" className="mt-3 w-full" loading={busy} onClick={cancel}>Cancel order</Button>

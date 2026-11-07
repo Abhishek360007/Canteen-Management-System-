@@ -70,9 +70,12 @@ public class LoyaltyService {
     private final LoyaltyTxnRepository txns;
     private final LiveHub live;
     private final Clock clock;
+    private final NotificationService notifications;
     private final SecureRandom random = new SecureRandom();
 
-    public LoyaltyService(UserRepository users, LoyaltyTxnRepository txns, LiveHub live, Clock clock) {
+    public LoyaltyService(UserRepository users, LoyaltyTxnRepository txns, LiveHub live, Clock clock,
+                          NotificationService notifications) {
+        this.notifications = notifications;
         this.users = users;
         this.txns = txns;
         this.live = live;
@@ -152,6 +155,8 @@ public class LoyaltyService {
             u.setBirthdayBonusYear(today.getYear());
             users.addPoints(u.getId(), BIRTHDAY_BONUS);
             record(u.getId(), Type.BIRTHDAY, BIRTHDAY_BONUS, "Happy birthday from Tula's Canteen! 🎂");
+            notifications.notify(u.getId(), "POINTS", "Happy birthday! 🎂",
+                    "Here are " + BIRTHDAY_BONUS + " bonus points from Tula's Canteen.", "/rewards");
             given++;
         }
         if (given > 0) log.info("Gave birthday bonus to {} student(s)", given);

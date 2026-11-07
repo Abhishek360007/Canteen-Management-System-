@@ -31,9 +31,12 @@ public class TopupService {
     private final SettingsService settings;
     private final AuditService audit;
     private final LiveHub live;
+    private final NotificationService notifications;
 
     public TopupService(TopupRequestRepository repo, UserRepository users, WalletService wallet,
-                        SettingsService settings, AuditService audit, LiveHub live) {
+                        SettingsService settings, AuditService audit, LiveHub live,
+                        NotificationService notifications) {
+        this.notifications = notifications;
         this.repo = repo;
         this.users = users;
         this.wallet = wallet;
@@ -116,6 +119,12 @@ public class TopupService {
     }
 
     private void notify(TopupRequest t) {
+        boolean ok = t.getStatus() == Status.APPROVED;
+        notifications.notify(t.getUser().getId(), "TOPUP",
+                ok ? AuditService.rupees(t.getAmount()) + " added to your wallet" : "UPI top-up not approved",
+                ok ? "Your UPI payment (ref " + t.getUpiRef() + ") was confirmed."
+                        : "Ref " + t.getUpiRef() + ": " + t.getReason() + ". Contact the canteen office if you were charged.",
+                "/wallet");
         live.toUser(t.getUser().getId(), "topup", Map.of("id", t.getId(), "status", t.getStatus()));
         live.toStaff("topup", Map.of("id", t.getId()));
     }

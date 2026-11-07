@@ -67,6 +67,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByReferralCodeIgnoreCase(String code);
 
+    @Query("select u.id from User u where u.role in :roles and u.blocked = false")
+    java.util.List<Long> findIdsByRoleIn(@Param("roles") Collection<Role> roles);
+
     boolean existsByReferralCodeIgnoreCase(String code);
 
     @Query("select u from User u where u.birthday is not null and u.role = com.tulas.canteen.domain.Role.STUDENT")

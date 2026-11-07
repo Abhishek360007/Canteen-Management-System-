@@ -12,6 +12,9 @@ public interface MenuItemRepository extends JpaRepository<MenuItem, Long> {
 
     List<MenuItem> findByArchivedFalseOrderByCategoryAscNameAsc();
 
+    @Query("select m.stockToday from MenuItem m where m.id = :id")
+    Integer stockOf(@Param("id") Long id);
+
     /** Atomic stock reservation: returns 0 if fewer plates are left than requested. */
     @Modifying(flushAutomatically = true)
     @Query("""
