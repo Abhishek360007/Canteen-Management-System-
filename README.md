@@ -125,6 +125,19 @@ cd backend
 mvn test
 ```
 
+## Deploy on Neon + Render (free)
+
+**Live:** https://tulas-canteen.onrender.com
+
+1. **Database:** create a project on [Neon](https://neon.tech) (region: Singapore) and copy the connection string
+   (`postgresql://user:password@ep-xxx.aws.neon.tech/neondb?sslmode=require`).
+2. **App:** on [Render](https://render.com) choose **New → Blueprint** and pick this repo. `render.yaml` sets up a
+   Docker web service. Fill in `DATABASE_URL` (the Neon string, pasted as-is), `ADMIN_EMAIL` and `ADMIN_PASSWORD`.
+3. Render builds the image, starts the app, and checks `/api/health`. Tables are created automatically on first start.
+
+On Render's free plan the app sleeps after 15 minutes without visitors, and the first visit after that takes
+about a minute to wake it.
+
 ## Deploy with Docker
 
 ```bash
