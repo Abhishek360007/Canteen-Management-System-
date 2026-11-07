@@ -1,0 +1,10 @@
+{
+  "name": "Tula's Canteen",
+  "short_name": "Tula's",
+  "description": "Order ahead, skip the queue.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFF8F1",
+  "theme_color": "#D9480F",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

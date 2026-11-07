@@ -1,0 +1,23 @@
+# Secrets
+.env
+*.local
+
+# Backend
+backend/target/
+backend/data/
+backend/src/main/resources/static/
+*.log
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
+.DS_Store
+Thumbs.db
