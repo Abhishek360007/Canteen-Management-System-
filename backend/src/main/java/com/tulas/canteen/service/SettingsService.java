@@ -6,28 +6,45 @@ import com.tulas.canteen.dto.AdminDtos.CanteenView;
 import com.tulas.canteen.dto.AdminDtos.SettingsRequest;
 import com.tulas.canteen.repo.SettingsRepository;
 import com.tulas.canteen.config.ApiException;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalTime;
 import java.util.Map;
 
 @Service
-public class SettingsService {
+public class SettingsService implements SmartInitializingSingleton {
 
     private final SettingsRepository repo;
     private final Clock clock;
     private final LiveHub live;
+    private final TransactionTemplate tx;
 
-    public SettingsService(SettingsRepository repo, Clock clock, LiveHub live) {
+    public SettingsService(SettingsRepository repo, Clock clock, LiveHub live, PlatformTransactionManager txm) {
         this.repo = repo;
         this.clock = clock;
         this.live = live;
+        this.tx = new TransactionTemplate(txm);
     }
 
-    @Transactional
+    /**
+     * Creates the settings row once at start-up, before the web server accepts requests,
+     * so concurrent first requests never race to insert it.
+     */
+    @Override
+    public void afterSingletonsInstantiated() {
+        tx.executeWithoutResult(s -> {
+            if (!repo.existsById(CanteenSettings.SINGLETON_ID)) repo.save(new CanteenSettings());
+        });
+    }
+
+    @Transactional(readOnly = true)
     public CanteenSettings get() {
-        return repo.findById(CanteenSettings.SINGLETON_ID).orElseGet(() -> repo.save(new CanteenSettings()));
+        return repo.findById(CanteenSettings.SINGLETON_ID)
+                .orElseThrow(() -> new IllegalStateException("canteen_settings row is missing"));
     }
 
     /** Taking orders right now: switched on by staff AND inside opening hours. */
