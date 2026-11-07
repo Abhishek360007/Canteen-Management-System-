@@ -34,6 +34,13 @@ public class PublicController {
         this.live = live;
     }
 
+    /** Used by the hosting platform to check the app is up. Touches the database so a dead DB shows as down. */
+    @GetMapping("/health")
+    public java.util.Map<String, String> health() {
+        settings.view();
+        return java.util.Map.of("status", "ok");
+    }
+
     @GetMapping("/menu")
     public List<MenuItemView> menu(@AuthenticationPrincipal AuthUser me) {
         return menu.list(me);

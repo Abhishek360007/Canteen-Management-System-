@@ -9,6 +9,13 @@ spring:
     url: jdbc:h2:file:./data/tulas;MODE=MySQL;DATABASE_TO_LOWER=TRUE;AUTO_SERVER=TRUE
     username: sa
     password:
+    # Small pool suits free hosted databases (Neon). Connections are recycled before Neon drops idle ones.
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:5}
+      minimum-idle: 1
+      max-lifetime: 240000
+      idle-timeout: 120000
+      connection-timeout: 30000
   jpa:
     hibernate:
       ddl-auto: update

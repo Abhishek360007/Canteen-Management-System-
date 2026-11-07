@@ -10,10 +10,10 @@ RUN npm run build
 FROM maven:3.9-eclipse-temurin-21 AS api
 WORKDIR /api
 COPY backend/pom.xml ./
-RUN mvn -q -B dependency:go-offline
-COPY backend/src ./src
+COPY backend/src/main ./src/main
 COPY --from=web /web/dist ./src/main/resources/static
-RUN mvn -q -B package -DskipTests
+# Tests run in CI/locally (they need an embedded PostgreSQL); the image build skips them.
+RUN mvn -q -B package -Dmaven.test.skip=true
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
@@ -21,4 +21,5 @@ RUN addgroup -S app && adduser -S app -G app
 COPY --from=api /api/target/tulas-canteen-*.jar app.jar
 USER app
 EXPOSE 8080
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]
+# Tuned to fit small hosts (e.g. Render's free 512 MB instance).
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=60", "-XX:+UseSerialGC", "-Xss512k", "-XX:TieredStopAtLevel=1", "-jar", "app.jar"]
