@@ -39,6 +39,19 @@ public class CanteenSettings {
     @Column(nullable = false)
     private boolean cashAllowed = true;
 
+    /** Canteen's UPI ID (e.g. tulascanteen@okaxis). Empty = wallet top-up requests switched off. */
+    @Column(length = 60)
+    private String upiId;
+
+    /** Name shown in the student's UPI app when paying. */
+    @Column(length = 60)
+    private String upiName;
+
+    public String getUpiId() { return upiId; }
+    public void setUpiId(String upiId) { this.upiId = upiId; }
+    public String getUpiName() { return upiName; }
+    public void setUpiName(String upiName) { this.upiName = upiName; }
+
     public Long getId() { return id; }
     public CanteenStatus getStatus() { return status; }
     public void setStatus(CanteenStatus status) { this.status = status; }

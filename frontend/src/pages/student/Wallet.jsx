@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useOutletContext } from 'react-router-dom'
+import TopupCard from '../../components/TopupCard'
 import { ArrowDownLeft, ArrowUpRight, RotateCcw, Wallet as WalletIcon } from 'lucide-react'
 import { api, dateOf, rupees, timeOf } from '../../api'
 import { useLive } from '../../context/LiveContext'
@@ -11,6 +13,7 @@ const TXN = {
 }
 
 export default function WalletPage() {
+  const { canteen } = useOutletContext()
   const [wallet, setWallet] = useState(null)
   const [spend, setSpend] = useState(null)
   const [error, setError] = useState(null)
@@ -32,8 +35,12 @@ export default function WalletPage() {
         <WalletIcon className="absolute -right-4 -top-4 size-32 opacity-10" />
         <p className="text-sm font-medium opacity-85">Available balance</p>
         <p className="font-display text-4xl font-extrabold">{rupees(wallet.balance)}</p>
-        <p className="mt-3 text-sm opacity-85">Recharge at the canteen office with cash or UPI. It shows up here instantly.</p>
+        <p className="mt-3 text-sm opacity-85">
+          {canteen?.upiId ? 'Add money with UPI below, or recharge at the canteen office.' : 'Recharge at the canteen office with cash or UPI. It shows up here instantly.'}
+        </p>
       </div>
+
+      <TopupCard canteen={canteen} />
 
       {spend && (
         <div className="mt-4 grid grid-cols-2 gap-3">

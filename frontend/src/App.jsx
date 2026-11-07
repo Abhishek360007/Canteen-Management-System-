@@ -21,6 +21,8 @@ import UsersPage from './pages/admin/Users'
 import More from './pages/admin/More'
 import Announcements from './pages/admin/Announcements'
 import Settings from './pages/admin/Settings'
+import Topups from './pages/admin/Topups'
+import Activity from './pages/admin/Activity'
 
 function Guard({ roles, children }) {
   const { user } = useAuth()
@@ -61,6 +63,8 @@ export default function App() {
         <Route path="/admin/more" element={<Guard roles={A}><More /></Guard>} />
         <Route path="/admin/announcements" element={<Guard roles={A}><Announcements /></Guard>} />
         <Route path="/admin/settings" element={<Guard roles={A}><Settings /></Guard>} />
+        <Route path="/admin/topups" element={<Guard roles={A}><Topups /></Guard>} />
+        <Route path="/admin/activity" element={<Guard roles={A}><Activity /></Guard>} />
 
         <Route path="/account" element={<Account />} />
       </Route>

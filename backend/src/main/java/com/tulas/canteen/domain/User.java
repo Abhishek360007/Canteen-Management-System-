@@ -49,6 +49,16 @@ public class User {
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
 
+    /**
+     * Goes up when the password changes or an admin resets it. Login tokens carry the version they
+     * were issued with, so older tokens (other phones, a stolen token) stop working.
+     * Nullable so the column can be added to existing databases; null means 0.
+     */
+    private Integer tokenVersion;
+
+    public int getTokenVersion() { return tokenVersion == null ? 0 : tokenVersion; }
+    public void bumpTokenVersion() { tokenVersion = getTokenVersion() + 1; }
+
     public Long getId() { return id; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }

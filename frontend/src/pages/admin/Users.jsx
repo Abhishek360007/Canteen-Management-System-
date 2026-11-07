@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Ban, IndianRupee, Search, UserPlus, Users as UsersIcon } from 'lucide-react'
+import { Ban, IndianRupee, KeyRound, LogOut, Search, UserPlus, Users as UsersIcon } from 'lucide-react'
 import { api, dateOf, rupees, timeOf } from '../../api'
 import { Button, Card, Empty, ErrorNote, Input, Modal, PageTitle, Spinner, useToast } from '../../components/ui'
 
@@ -15,6 +15,7 @@ export default function UsersPage() {
   const [recharge, setRecharge] = useState(null)
   const [history, setHistory] = useState(null)
   const [staffOpen, setStaffOpen] = useState(false)
+  const [temp, setTemp] = useState(null)
 
   const load = useCallback(() => {
     const p = new URLSearchParams({ page })
@@ -33,6 +34,26 @@ export default function UsersPage() {
     try {
       await api(`/api/admin/users/${u.id}/block`, { method: 'POST', body: { blocked: !u.blocked } })
       load()
+    } catch (e) {
+      toast(e.message, 'error')
+    }
+  }
+
+  const resetPassword = async (u) => {
+    if (!confirm(`Reset ${u.name}'s password?\n\nThey get a temporary password and are logged out on every device.`)) return
+    try {
+      const r = await api(`/api/admin/users/${u.id}/reset-password`, { method: 'POST' })
+      setTemp({ user: u, password: r.tempPassword })
+    } catch (e) {
+      toast(e.message, 'error')
+    }
+  }
+
+  const logoutEverywhere = async (u) => {
+    if (!confirm(`Log ${u.name} out on all devices? Use this if they lost their phone.`)) return
+    try {
+      await api(`/api/admin/users/${u.id}/logout-everywhere`, { method: 'POST' })
+      toast(`${u.name} has been logged out everywhere`, 'good')
     } catch (e) {
       toast(e.message, 'error')
     }
@@ -85,9 +106,17 @@ export default function UsersPage() {
                 <div className="flex gap-1.5">
                   {u.role === 'STUDENT' && <Button size="sm" variant="soft" onClick={() => setRecharge(u)}><IndianRupee className="size-4" /> Recharge</Button>}
                   {u.role !== 'ADMIN' && (
-                    <Button size="sm" variant={u.blocked ? 'outline' : 'ghost'} onClick={() => toggleBlock(u)} aria-label={u.blocked ? 'Unblock' : 'Block'}>
-                      <Ban className="size-4" />{u.blocked ? 'Unblock' : ''}
-                    </Button>
+                    <>
+                      <Button size="sm" variant="ghost" onClick={() => resetPassword(u)} title="Reset password" aria-label={`Reset ${u.name}'s password`}>
+                        <KeyRound className="size-4" />
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => logoutEverywhere(u)} title="Log out on all devices" aria-label={`Log ${u.name} out on all devices`}>
+                        <LogOut className="size-4" />
+                      </Button>
+                      <Button size="sm" variant={u.blocked ? 'outline' : 'ghost'} onClick={() => toggleBlock(u)} title={u.blocked ? 'Unblock' : 'Block'} aria-label={u.blocked ? 'Unblock' : 'Block'}>
+                        <Ban className="size-4" />{u.blocked ? 'Unblock' : ''}
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>
@@ -105,6 +134,12 @@ export default function UsersPage() {
 
       <RechargeModal user={recharge} onClose={() => setRecharge(null)} onDone={() => { setRecharge(null); load() }} />
       <StaffModal open={staffOpen} onClose={() => setStaffOpen(false)} onDone={() => { setStaffOpen(false); setRole('STAFF') }} />
+
+      <Modal open={!!temp} onClose={() => setTemp(null)} title="Temporary password">
+        <p className="text-sm text-ink-2">Give this to <b>{temp?.user.name}</b> in person. They should change it under Account after logging in. It won't be shown again.</p>
+        <p className="my-4 select-all rounded-xl bg-card-2 py-4 text-center font-mono text-2xl font-bold tracking-wider">{temp?.password}</p>
+        <Button className="w-full" onClick={() => { navigator.clipboard?.writeText(temp.password).catch(() => {}); toast('Copied', 'good') }}>Copy</Button>
+      </Modal>
 
       <Modal open={!!history} onClose={() => setHistory(null)} title={`${history?.user.name}'s wallet`}>
         {!history?.wallet ? <Spinner /> : (

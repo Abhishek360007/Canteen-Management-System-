@@ -4,6 +4,7 @@ import com.tulas.canteen.config.ApiException;
 import com.tulas.canteen.domain.Announcement;
 import com.tulas.canteen.domain.OrderStatus;
 import com.tulas.canteen.domain.Role;
+import com.tulas.canteen.domain.TopupRequest;
 import com.tulas.canteen.domain.User;
 import com.tulas.canteen.dto.AdminDtos.*;
 import com.tulas.canteen.dto.AuthDtos.UserView;
@@ -11,6 +12,7 @@ import com.tulas.canteen.dto.MenuDtos.MenuItemRequest;
 import com.tulas.canteen.dto.MenuDtos.MenuItemView;
 import com.tulas.canteen.dto.OrderDtos.OrderView;
 import com.tulas.canteen.repo.AnnouncementRepository;
+import com.tulas.canteen.repo.AuditLogRepository;
 import com.tulas.canteen.repo.OrderRepository;
 import com.tulas.canteen.repo.UserRepository;
 import com.tulas.canteen.security.AuthUser;
@@ -32,7 +34,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
-/** Admin panel. ADMIN only (see SecurityConfig). */
+/** Admin panel. ADMIN only (see SecurityConfig). Actions that change money, users or the menu are logged. */
 @RestController
 @RequestMapping("/api/admin")
 public class AdminController {
@@ -41,24 +43,31 @@ public class AdminController {
     private final UserRepository users;
     private final OrderRepository orders;
     private final AnnouncementRepository announcements;
+    private final AuditLogRepository auditLogs;
     private final MenuService menu;
     private final WalletService wallet;
     private final AuthService auth;
     private final SettingsService settings;
+    private final TopupService topups;
+    private final AuditService audit;
     private final LiveHub live;
     private final Clock clock;
 
     public AdminController(ReportService reports, UserRepository users, OrderRepository orders,
-                           AnnouncementRepository announcements, MenuService menu, WalletService wallet,
-                           AuthService auth, SettingsService settings, LiveHub live, Clock clock) {
+                           AnnouncementRepository announcements, AuditLogRepository auditLogs, MenuService menu,
+                           WalletService wallet, AuthService auth, SettingsService settings, TopupService topups,
+                           AuditService audit, LiveHub live, Clock clock) {
         this.reports = reports;
         this.users = users;
         this.orders = orders;
         this.announcements = announcements;
+        this.auditLogs = auditLogs;
         this.menu = menu;
         this.wallet = wallet;
         this.auth = auth;
         this.settings = settings;
+        this.topups = topups;
+        this.audit = audit;
         this.live = live;
         this.clock = clock;
     }
@@ -84,7 +93,10 @@ public class AdminController {
     @PostMapping("/users/{id}/recharge")
     public TxnView recharge(@AuthenticationPrincipal AuthUser me, @PathVariable Long id,
                             @Valid @RequestBody RechargeRequest r) {
-        return wallet.recharge(id, r.amount(), r.note(), me.name());
+        TxnView t = wallet.recharge(id, r.amount(), r.note(), me.name());
+        audit.record(me, "WALLET_RECHARGE", AuditService.who(auth.get(id)),
+                AuditService.rupees(r.amount()) + (r.note() == null || r.note().isBlank() ? "" : " · " + r.note().trim()));
+        return t;
     }
 
     @GetMapping("/users/{id}/wallet")
@@ -98,32 +110,86 @@ public class AdminController {
         if (me.id().equals(id)) throw ApiException.badRequest("You can't block your own account.");
         User u = users.findById(id).orElseThrow(() -> ApiException.notFound("User not found"));
         u.setBlocked(r.blocked());
+        audit.record(me, r.blocked() ? "USER_BLOCKED" : "USER_UNBLOCKED", AuditService.who(u), null);
         return UserView.of(u);
+    }
+
+    /** For a user who forgot their password: sets a temporary one and logs them out everywhere. */
+    @PostMapping("/users/{id}/reset-password")
+    public TempPasswordView resetPassword(@AuthenticationPrincipal AuthUser me, @PathVariable Long id) {
+        if (me.id().equals(id)) throw ApiException.badRequest("Change your own password under Account.");
+        String temp = auth.resetPassword(id);
+        audit.record(me, "PASSWORD_RESET", AuditService.who(auth.get(id)), "Temporary password issued");
+        return new TempPasswordView(temp);
+    }
+
+    /** E.g. a student lost their phone: every device they are logged in on is signed out. */
+    @PostMapping("/users/{id}/logout-everywhere")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void logoutEverywhere(@AuthenticationPrincipal AuthUser me, @PathVariable Long id) {
+        auth.logoutEverywhere(id);
+        audit.record(me, "USER_LOGGED_OUT", AuditService.who(auth.get(id)), "Signed out on all devices");
     }
 
     @PostMapping("/staff")
     @ResponseStatus(HttpStatus.CREATED)
-    public UserView createStaff(@Valid @RequestBody CreateStaffRequest r) {
-        return UserView.of(auth.createUser(r.name(), r.email(), r.password(), r.phone(), Role.STAFF));
+    public UserView createStaff(@AuthenticationPrincipal AuthUser me, @Valid @RequestBody CreateStaffRequest r) {
+        User u = auth.createUser(r.name(), r.email(), r.password(), r.phone(), Role.STAFF);
+        audit.record(me, "STAFF_CREATED", AuditService.who(u), null);
+        return UserView.of(u);
+    }
+
+    // ---- UPI top-ups
+
+    @GetMapping("/topups")
+    public List<TopupView> topups(@RequestParam(required = false) TopupRequest.Status status) {
+        return topups.list(status);
+    }
+
+    @PostMapping("/topups/{id}/approve")
+    public TopupView approveTopup(@AuthenticationPrincipal AuthUser me, @PathVariable Long id) {
+        return topups.approve(me, id);
+    }
+
+    @PostMapping("/topups/{id}/reject")
+    public TopupView rejectTopup(@AuthenticationPrincipal AuthUser me, @PathVariable Long id,
+                                 @Valid @RequestBody(required = false) RejectBody r) {
+        return topups.reject(me, id, r == null ? null : r.reason());
     }
 
     // ---- menu
 
     @PostMapping("/menu")
     @ResponseStatus(HttpStatus.CREATED)
-    public MenuItemView createDish(@Valid @RequestBody MenuItemRequest r) {
-        return menu.create(r);
+    public MenuItemView createDish(@AuthenticationPrincipal AuthUser me, @Valid @RequestBody MenuItemRequest r) {
+        MenuItemView v = menu.create(r);
+        audit.record(me, "DISH_ADDED", v.name(), AuditService.rupees(v.price()));
+        return v;
     }
 
     @PutMapping("/menu/{id}")
-    public MenuItemView updateDish(@PathVariable Long id, @Valid @RequestBody MenuItemRequest r) {
-        return menu.update(id, r);
+    public MenuItemView updateDish(@AuthenticationPrincipal AuthUser me, @PathVariable Long id,
+                                   @Valid @RequestBody MenuItemRequest r) {
+        MenuItemView v = menu.update(id, r);
+        audit.record(me, "DISH_UPDATED", v.name(), AuditService.rupees(v.price())
+                + (v.available() ? "" : " · off today"));
+        return v;
     }
 
     @DeleteMapping("/menu/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteDish(@PathVariable Long id) {
+    public void deleteDish(@AuthenticationPrincipal AuthUser me, @PathVariable Long id) {
+        String name = menu.nameOf(id);
         menu.archive(id);
+        audit.record(me, "DISH_REMOVED", name, null);
+    }
+
+    /** One click to fill an empty menu with a standard canteen menu (dishes already present are skipped). */
+    @PostMapping("/menu/import-defaults")
+    public ImportResult importDefaultMenu(@AuthenticationPrincipal AuthUser me) {
+        int[] r = menu.importDefaults();
+        if (r[0] > 0) audit.record(me, "MENU_IMPORTED", "Standard menu", r[0] + " dishes added");
+        return new ImportResult(r[0], r[1]);
     }
 
     // ---- orders
@@ -159,6 +225,18 @@ public class AdminController {
         return new LocalDate[]{f, t};
     }
 
+    // ---- activity log
+
+    @GetMapping("/audit")
+    @Transactional(readOnly = true)
+    public Map<String, Object> auditLog(@RequestParam(required = false) String q,
+                                        @RequestParam(defaultValue = "0") int page) {
+        String query = q == null || q.isBlank() ? null : q.trim();
+        var p = auditLogs.search(query, PageRequest.of(Math.max(page, 0), 50));
+        return Map.of("items", p.getContent().stream().map(AuditView::of).toList(),
+                "page", p.getNumber(), "totalPages", p.getTotalPages());
+    }
+
     // ---- announcements
 
     @GetMapping("/announcements")
@@ -169,12 +247,13 @@ public class AdminController {
     @PostMapping("/announcements")
     @ResponseStatus(HttpStatus.CREATED)
     @Transactional
-    public AnnouncementView createAnnouncement(@Valid @RequestBody AnnouncementRequest r) {
+    public AnnouncementView createAnnouncement(@AuthenticationPrincipal AuthUser me, @Valid @RequestBody AnnouncementRequest r) {
         Announcement a = new Announcement();
         a.setMessage(r.message().trim());
         a.setActive(r.active());
         announcements.save(a);
         live.toEveryone("announcement", Map.of("changed", true));
+        audit.record(me, "ANNOUNCEMENT_POSTED", null, a.getMessage());
         return AnnouncementView.of(a);
     }
 
@@ -204,7 +283,11 @@ public class AdminController {
     }
 
     @PutMapping("/settings")
-    public CanteenView updateSettings(@Valid @RequestBody SettingsRequest r) {
-        return settings.update(r);
+    public CanteenView updateSettings(@AuthenticationPrincipal AuthUser me, @Valid @RequestBody SettingsRequest r) {
+        CanteenView v = settings.update(r);
+        audit.record(me, "SETTINGS_CHANGED", "Canteen settings",
+                "Hours " + r.openTime() + "–" + r.closeTime() + " · cash " + (r.cashAllowed() ? "on" : "off")
+                        + " · UPI " + (v.upiId() == null ? "off" : v.upiId()));
+        return v;
     }
 }

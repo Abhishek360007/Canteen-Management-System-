@@ -26,6 +26,7 @@ export default function Settings() {
         body: {
           openTime: f.openTime, closeTime: f.closeTime, maxActiveOrders: Number(f.maxActiveOrders),
           maxQtyPerItem: Number(f.maxQtyPerItem), noShowMinutes: Number(f.noShowMinutes), cashAllowed: f.cashAllowed,
+          upiId: (f.upiId || '').trim(), upiName: (f.upiName || '').trim(),
         },
       })
       toast('Settings saved', 'good')
@@ -61,6 +62,14 @@ export default function Settings() {
           <div className="flex items-center justify-between rounded-xl bg-card-2 p-3">
             <div><p className="text-sm font-medium">Allow cash / UPI at counter</p><p className="text-xs text-muted">Off = wallet payments only</p></div>
             <Toggle checked={f.cashAllowed} onChange={(v) => setF({ ...f, cashAllowed: v })} label="Allow cash at counter" />
+          </div>
+          <div className="rounded-xl border border-line p-3">
+            <p className="text-sm font-medium">UPI wallet top-ups</p>
+            <p className="mb-3 text-xs text-muted">Students pay this UPI ID and send the reference; you approve it under More → UPI top-ups. Leave empty to switch off.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input label="Canteen UPI ID" placeholder="tulascanteen@okaxis" maxLength={60} value={f.upiId || ''} onChange={set('upiId')} />
+              <Input label="Name shown in UPI app" placeholder="Tula's Canteen" maxLength={60} value={f.upiName || ''} onChange={set('upiName')} />
+            </div>
           </div>
           <ErrorNote>{error}</ErrorNote>
           <Button type="submit" loading={busy}>Save settings</Button>

@@ -42,6 +42,8 @@ by checking the student's order number and 4-digit pickup code (or scanning thei
 - Phone notification and vibration when the food is ready
 - Cancel before cooking starts (instant wallet refund); rate the order after collecting
 - Wallet page with balance, full transaction history and monthly spending
+- **Add money with UPI**: pay the canteen's UPI ID from any UPI app (one tap on phones, QR on laptops), then
+  send the UPI reference; it's added to the wallet once an admin confirms the payment
 
 ### Kitchen staff
 - **Live order board** (New / Cooking / Ready) that updates instantly, with a chime for new orders
@@ -54,8 +56,12 @@ by checking the student's order number and 4-digit pickup code (or scanning thei
 
 ### Admin
 - **Dashboard**: today's sales, orders in progress, 7-day sales chart, busiest hours, top dishes, average rating, money held in wallets
-- Menu management: add, edit and remove dishes (removed dishes keep their order history)
-- User management: search, **recharge wallets**, see wallet history, block or unblock, create kitchen staff logins
+- Menu management: add, edit and remove dishes (removed dishes keep their order history), plus a one-click
+  **standard canteen menu** of 40+ everyday dishes (dosa, thali, biryani, snacks, chai, lassi, desserts) to start from
+- User management: search, **recharge wallets**, see wallet history, block or unblock, create kitchen staff logins,
+  **reset a forgotten password** (temporary password) and **log someone out on all devices**
+- **UPI top-up approvals**: each request shows the amount and UPI reference to check before approving or rejecting
+- **Activity log**: who recharged, approved, refunded, blocked, reset a password or changed the menu, and when
 - All orders with date and status filters, plus **CSV export** for Excel
 - Announcements shown at the top of every student's screen
 - Settings: opening hours, max orders in progress per student, max plates of one dish, no-show hold time, cash on/off
@@ -72,6 +78,12 @@ by checking the student's order number and 4-digit pickup code (or scanning thei
 - **Background jobs**: ready food not collected within the hold time becomes a no-show and its plates go back
   on sale; unfinished orders from earlier days are cancelled and refunded; stock resets every morning at 5 AM.
 - Role-based access (Student / Staff / Admin) on every API path; blocked users are logged out immediately.
+- **Login protection**: 5 wrong passwords lock that account for 15 minutes, failed logins and sign-ups are
+  limited per network, and changing or resetting a password logs out every other device.
+- **Holds up under a rush**: each order uses a single database connection, so a burst of simultaneous orders
+  can't exhaust the small connection pool of a free hosted database (covered by a concurrency test).
+- UPI top-ups can't be approved twice, and the same UPI reference can't be claimed twice.
+- Tests run on both H2 and a real PostgreSQL server.
 - Swagger API docs, an integration test for the whole order flow, light and dark mode, and a mobile-first layout.
 
 ## Tech stack

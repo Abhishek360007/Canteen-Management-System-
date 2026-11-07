@@ -3,8 +3,12 @@ package com.tulas.canteen;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tulas.canteen.domain.CanteenSettings;
+import com.tulas.canteen.repo.DailyCounterRepository;
 import com.tulas.canteen.repo.SettingsRepository;
+import com.tulas.canteen.service.CounterService;
+import com.tulas.canteen.service.DefaultMenu;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -14,8 +18,10 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import java.time.LocalDate;
 import java.time.LocalTime;
-import java.util.UUID;
+import java.util.*;
+import java.util.concurrent.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -28,13 +34,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.url=jdbc:h2:mem:tulas-test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "app.seed-demo=true",
-        "app.admin.password=Admin@123"
+        "app.admin.password=Admin@123",
+        "app.limits.signups-per-hour=1000"
 })
 class OrderFlowTest {
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @Autowired SettingsRepository settingsRepo;
+    @Autowired CounterService counterService;
+    @Autowired DailyCounterRepository counterRepo;
 
     @BeforeEach
     void openAllDay() {
@@ -42,7 +51,144 @@ class OrderFlowTest {
         CanteenSettings s = settingsRepo.findById(CanteenSettings.SINGLETON_ID).orElseThrow();
         s.setOpenTime(LocalTime.MIN);
         s.setCloseTime(LocalTime.of(23, 59, 59));
+        s.setUpiId("tulascanteen@okaxis");
         settingsRepo.save(s);
+    }
+
+    @Test
+    void upiTopupApprovedOnceAndRejectedRequestsDontPay() throws Exception {
+        String student = register("topup" + UUID.randomUUID() + "@college.edu");
+        String admin = login("admin@tulas.local", "Admin@123");
+        String ref = "UTR" + System.nanoTime();
+
+        JsonNode req = call(post("/api/wallet/topups").content("{\"amount\":200,\"upiRef\":\"" + ref + "\"}"), student, 201);
+        assertThat(req.get("status").asText()).isEqualTo("PENDING");
+        // The same UPI reference can't be claimed twice.
+        call(post("/api/wallet/topups").content("{\"amount\":200,\"upiRef\":\"" + ref + "\"}"), student, 409);
+        // Nothing is credited until an admin approves.
+        assertThat(call(get("/api/wallet"), student, 200).get("balance").decimalValue()).isEqualByComparingTo("0");
+
+        long id = req.get("id").asLong();
+        call(post("/api/admin/topups/" + id + "/approve"), admin, 200);
+        call(post("/api/admin/topups/" + id + "/approve"), admin, 409); // second approval refused
+        assertThat(call(get("/api/wallet"), student, 200).get("balance").decimalValue()).isEqualByComparingTo("200");
+
+        JsonNode other = call(post("/api/wallet/topups").content("{\"amount\":500,\"upiRef\":\"X" + ref + "\"}"), student, 201);
+        call(post("/api/admin/topups/" + other.get("id").asLong() + "/reject").content("{\"reason\":\"No such payment\"}"), admin, 200);
+        assertThat(call(get("/api/wallet"), student, 200).get("balance").decimalValue()).isEqualByComparingTo("200");
+        assertThat(call(get("/api/wallet/topups"), student, 200).get(0).get("reason").asText()).isEqualTo("No such payment");
+
+        // Students can't approve their own.
+        call(post("/api/admin/topups/" + id + "/approve"), student, 403);
+        // It's in the activity log.
+        JsonNode log = call(get("/api/admin/audit?q=TOPUP"), admin, 200).get("items");
+        assertThat(log.toString()).contains("TOPUP_APPROVED").contains("TOPUP_REJECTED").contains(ref);
+    }
+
+    @Test
+    void passwordChangeLogsOutOtherDevices() throws Exception {
+        String email = "pw" + UUID.randomUUID() + "@college.edu";
+        String phone = register(email);
+        String laptop = login(email, "secret123");
+
+        JsonNode res = call(post("/api/auth/password")
+                .content("{\"currentPassword\":\"secret123\",\"newPassword\":\"newsecret456\"}"), phone, 200);
+        String fresh = res.get("token").asText();
+
+        call(get("/api/auth/me"), fresh, 200);   // the device that changed it stays in
+        call(get("/api/auth/me"), laptop, 401);  // every other device is logged out
+        call(get("/api/auth/me"), phone, 401);   // ...including the old token on this device
+        login(email, "newsecret456");
+    }
+
+    @Test
+    void adminResetPasswordGivesWorkingTemporaryPassword() throws Exception {
+        String email = "reset" + UUID.randomUUID() + "@college.edu";
+        String old = register(email);
+        String admin = login("admin@tulas.local", "Admin@123");
+        long id = call(get("/api/auth/me"), old, 200).get("id").asLong();
+
+        String temp = call(post("/api/admin/users/" + id + "/reset-password"), admin, 200).get("tempPassword").asText();
+        assertThat(temp).hasSize(10);
+        call(get("/api/auth/me"), old, 401);
+        login(email, temp);
+    }
+
+    @Test
+    void repeatedWrongPasswordsLockTheAccountTemporarily() throws Exception {
+        String email = "lock" + UUID.randomUUID() + "@college.edu";
+        register(email);
+        String wrong = "{\"email\":\"" + email + "\",\"password\":\"wrong-one\"}";
+        for (int i = 0; i < 5; i++) {
+            mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content(wrong))
+                    .andExpect(status().isUnauthorized());
+        }
+        // Even the right password is refused while locked.
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"password\":\"secret123\"}"))
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void simultaneousOrdersGetUniqueNumbers() throws Exception {
+        int n = 6;
+        String[] tokens = new String[n];
+        for (int i = 0; i < n; i++) tokens[i] = register("rush" + i + UUID.randomUUID() + "@college.edu");
+        long chai = idOf(call(get("/api/menu"), tokens[0], 200), "Masala Chai");
+        String body = "{\"items\":[{\"menuItemId\":" + chai + ",\"quantity\":1}],\"paymentMethod\":\"CASH\"}";
+
+        var pool = Executors.newFixedThreadPool(n);
+        var start = new CountDownLatch(1);
+        List<Future<JsonNode>> placed = new ArrayList<>();
+        for (String t : tokens) {
+            placed.add(pool.submit(() -> {
+                start.await();
+                return call(post("/api/orders").content(body), t, 201);
+            }));
+        }
+        start.countDown();
+        Set<String> unique = new HashSet<>();
+        List<JsonNode> results = new ArrayList<>();
+        for (Future<JsonNode> f : placed) results.add(f.get(30, TimeUnit.SECONDS));
+        pool.shutdown();
+        results.forEach(o -> unique.add(o.get("code").asText()));
+        assertThat(unique).hasSize(n);
+
+        // Clean up so other tests see an empty queue.
+        for (int i = 0; i < n; i++) call(post("/api/orders/" + results.get(i).get("id").asLong() + "/cancel"), tokens[i], 200);
+    }
+
+    @Test
+    void firstOrderOfTheDayCounterSurvivesARace() throws Exception {
+        LocalDate day = LocalDate.of(2099, 1, (int) (System.nanoTime() % 28) + 1);
+        int n = 6;
+        var pool = Executors.newFixedThreadPool(n);
+        var start = new CountDownLatch(1);
+        List<Future<?>> jobs = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            jobs.add(pool.submit(() -> {
+                start.await();
+                try {
+                    counterService.createIfMissing(day);
+                } catch (DataIntegrityViolationException expectedForLosers) {
+                    // fine: OrderService ignores this
+                }
+                return null;
+            }));
+        }
+        start.countDown();
+        for (Future<?> f : jobs) f.get(30, TimeUnit.SECONDS); // any other exception fails the test
+        pool.shutdown();
+        assertThat(counterRepo.existsById(day)).isTrue();
+    }
+
+    @Test
+    void standardMenuImportSkipsExistingDishes() throws Exception {
+        String admin = login("admin@tulas.local", "Admin@123");
+        // Demo mode already loaded the standard menu, so everything is skipped.
+        JsonNode r = call(post("/api/admin/menu/import-defaults"), admin, 200);
+        assertThat(r.get("added").asInt()).isZero();
+        assertThat(r.get("skipped").asInt()).isEqualTo(DefaultMenu.DISHES.size());
     }
 
     @Test

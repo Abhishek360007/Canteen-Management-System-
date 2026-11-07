@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { ChevronRight } from 'lucide-react'
 import { api, rupees } from '../../api'
 import { useLive } from '../../context/LiveContext'
 import { BarChart, RankBars } from '../../components/Charts'
@@ -11,6 +13,7 @@ export default function Dashboard() {
   const load = useCallback(() => api('/api/admin/dashboard').then(setD).catch((e) => setError(e.message)), [])
   useEffect(() => { load() }, [load])
   useLive('order', load)
+  useLive('topup', load)
 
   if (error) return <ErrorNote>{error}</ErrorNote>
   if (!d) return <Spinner />
@@ -35,6 +38,12 @@ export default function Dashboard() {
   return (
     <>
       <PageTitle title="Dashboard" sub="Today at Tula's Canteen" />
+      {d.pendingTopups > 0 && (
+        <Link to="/admin/topups" className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-warn-soft p-3.5 text-sm font-medium text-warn">
+          <span>{d.pendingTopups} UPI top-up{d.pendingTopups > 1 ? 's' : ''} waiting for approval</span>
+          <span className="flex items-center gap-1 font-semibold">Review <ChevronRight className="size-4" /></span>
+        </Link>
+      )}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Sales today" value={rupees(d.revenueToday)} hint={`${d.ordersToday} order${d.ordersToday === 1 ? '' : 's'}`} strong />
         <Stat label="In progress now" value={d.activeNow} hint={`${d.cancelledToday} cancelled · ${d.noShowsToday} not collected`} />

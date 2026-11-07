@@ -3,7 +3,7 @@ import { API_BASE, tokenStore } from '../api'
 import { useAuth } from './AuthContext'
 
 const LiveContext = createContext(null)
-const EVENTS = ['order', 'menu', 'wallet', 'canteen', 'announcement']
+const EVENTS = ['order', 'menu', 'wallet', 'canteen', 'announcement', 'topup']
 
 /**
  * One Server-Sent Events connection per logged-in tab. Screens subscribe with useLive('order', fn)

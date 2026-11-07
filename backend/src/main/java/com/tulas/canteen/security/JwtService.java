@@ -49,17 +49,22 @@ public class JwtService {
         return Jwts.builder()
                 .subject(String.valueOf(user.getId()))
                 .claim("role", user.getRole().name())
+                .claim("ver", user.getTokenVersion())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(expiry)))
                 .signWith(key)
                 .compact();
     }
 
-    /** Returns the user id inside a valid, unexpired token. */
-    public Optional<Long> verify(String token) {
+    /** What a valid token says: whose it is and which password "version" it was issued for. */
+    public record TokenInfo(Long userId, int version) {}
+
+    /** Returns the contents of a valid, unexpired token. */
+    public Optional<TokenInfo> verify(String token) {
         try {
             Claims claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
-            return Optional.of(Long.valueOf(claims.getSubject()));
+            Number ver = claims.get("ver", Number.class);
+            return Optional.of(new TokenInfo(Long.valueOf(claims.getSubject()), ver == null ? 0 : ver.intValue()));
         } catch (JwtException | IllegalArgumentException e) {
             return Optional.empty();
         }

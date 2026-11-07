@@ -1,6 +1,9 @@
 package com.tulas.canteen.web;
 
 import com.tulas.canteen.dto.AdminDtos.SpendingView;
+import com.tulas.canteen.dto.AdminDtos.TopupBody;
+import com.tulas.canteen.dto.AdminDtos.TopupView;
+import com.tulas.canteen.service.TopupService;
 import com.tulas.canteen.dto.AdminDtos.WalletView;
 import com.tulas.canteen.dto.OrderDtos.OrderView;
 import com.tulas.canteen.dto.OrderDtos.PlaceOrderRequest;
@@ -26,12 +29,15 @@ public class StudentController {
     private final WalletService wallet;
     private final MenuService menu;
     private final ReportService reports;
+    private final TopupService topups;
 
-    public StudentController(OrderService orders, WalletService wallet, MenuService menu, ReportService reports) {
+    public StudentController(OrderService orders, WalletService wallet, MenuService menu, ReportService reports,
+                             TopupService topups) {
         this.orders = orders;
         this.wallet = wallet;
         this.menu = menu;
         this.reports = reports;
+        this.topups = topups;
     }
 
     @PostMapping("/orders")
@@ -69,6 +75,18 @@ public class StudentController {
     @GetMapping("/wallet/spending")
     public SpendingView spending(@AuthenticationPrincipal AuthUser me) {
         return reports.spending(me.id());
+    }
+
+    /** Ask for a UPI payment to be added to the wallet. */
+    @PostMapping("/wallet/topups")
+    @ResponseStatus(HttpStatus.CREATED)
+    public TopupView requestTopup(@AuthenticationPrincipal AuthUser me, @Valid @RequestBody TopupBody r) {
+        return topups.request(me, r.amount(), r.upiRef());
+    }
+
+    @GetMapping("/wallet/topups")
+    public List<TopupView> myTopups(@AuthenticationPrincipal AuthUser me) {
+        return topups.mine(me.id());
     }
 
     @PutMapping("/favourites/{itemId}")

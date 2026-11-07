@@ -8,7 +8,10 @@ import com.tulas.canteen.dto.MenuDtos.StockUpdate;
 import com.tulas.canteen.dto.OrderDtos.OrderView;
 import com.tulas.canteen.dto.OrderDtos.StatusUpdate;
 import com.tulas.canteen.dto.OrderDtos.VerifyRequest;
+import com.tulas.canteen.domain.PaymentMethod;
+import com.tulas.canteen.security.AuthUser;
 import com.tulas.canteen.service.*;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -27,14 +30,16 @@ public class KitchenController {
     private final MenuService menu;
     private final SettingsService settings;
     private final ReportService reports;
+    private final AuditService audit;
     private final Clock clock;
 
     public KitchenController(OrderService orders, MenuService menu, SettingsService settings,
-                             ReportService reports, Clock clock) {
+                             ReportService reports, AuditService audit, Clock clock) {
         this.orders = orders;
         this.menu = menu;
         this.settings = settings;
         this.reports = reports;
+        this.audit = audit;
         this.clock = clock;
     }
 
@@ -50,8 +55,22 @@ public class KitchenController {
     }
 
     @PostMapping("/orders/{id}/status")
-    public OrderView status(@PathVariable Long id, @Valid @RequestBody StatusUpdate r) {
-        return orders.updateStatus(id, r.status(), r.reason());
+    public OrderView status(@AuthenticationPrincipal AuthUser me, @PathVariable Long id, @Valid @RequestBody StatusUpdate r) {
+        OrderView o = orders.updateStatus(id, r.status(), r.reason());
+        // Routine cooking steps aren't logged; money-affecting or unusual ones are.
+        switch (r.status()) {
+            case CANCELLED -> audit.record(me, "ORDER_CANCELLED", "Order " + o.code() + " · " + o.customerName(),
+                    rupees(o) + (o.paymentMethod() == PaymentMethod.WALLET ? " refunded" : "") + " · " + o.cancelReason());
+            case COLLECTED -> audit.record(me, "ORDER_MANUAL_HANDOVER", "Order " + o.code() + " · " + o.customerName(),
+                    "Handed over without the pickup code · " + rupees(o));
+            case NO_SHOW -> audit.record(me, "ORDER_NO_SHOW", "Order " + o.code() + " · " + o.customerName(), rupees(o));
+            default -> { }
+        }
+        return o;
+    }
+
+    private static String rupees(OrderView o) {
+        return AuditService.rupees(o.total());
     }
 
     @PostMapping("/verify")
@@ -66,8 +85,10 @@ public class KitchenController {
     }
 
     @PutMapping("/status")
-    public CanteenView canteenStatus(@Valid @RequestBody StatusRequest r) {
-        return settings.setStatus(r.status());
+    public CanteenView canteenStatus(@AuthenticationPrincipal AuthUser me, @Valid @RequestBody StatusRequest r) {
+        CanteenView v = settings.setStatus(r.status());
+        audit.record(me, "CANTEEN_STATUS", "Canteen", "Set to " + r.status().name().toLowerCase());
+        return v;
     }
 
     @GetMapping("/summary")

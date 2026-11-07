@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Pencil, Plus, Star, Trash2 } from 'lucide-react'
+import { ListPlus, Pencil, Plus, Star, Trash2 } from 'lucide-react'
 import { api, rupees } from '../../api'
 import { DishArt } from '../../components/Brand'
 import { Button, Card, ErrorNote, Input, Modal, PageTitle, Select, Spinner, Toggle, VegDot, useToast } from '../../components/ui'
@@ -45,6 +45,21 @@ export default function AdminMenu() {
     }
   }
 
+  const [importing, setImporting] = useState(false)
+  const importDefaults = async () => {
+    if (!confirm("Add Tula's standard canteen menu (dosa, thali, biryani, snacks, drinks, desserts)? Dishes you already have are skipped.")) return
+    setImporting(true)
+    try {
+      const r = await api('/api/admin/menu/import-defaults', { method: 'POST' })
+      toast(r.added ? `${r.added} dishes added` : 'All standard dishes are already on your menu', 'good')
+      load()
+    } catch (e) {
+      toast(e.message, 'error')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const remove = async (item) => {
     if (!confirm(`Remove ${item.name} from the menu? Past orders keep their history.`)) return
     try {
@@ -59,8 +74,23 @@ export default function AdminMenu() {
 
   return (
     <>
-      <PageTitle title="Menu" sub={menu ? `${menu.length} dishes` : null} right={<Button size="sm" onClick={() => open(null)}><Plus className="size-4" /> Add dish</Button>} />
+      <PageTitle title="Menu" sub={menu ? `${menu.length} dishes` : null}
+        right={
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" loading={importing} onClick={importDefaults} title="Add a standard canteen menu">
+              <ListPlus className="size-4" /> <span className="hidden sm:inline">Standard menu</span>
+            </Button>
+            <Button size="sm" onClick={() => open(null)}><Plus className="size-4" /> Add dish</Button>
+          </div>
+        } />
       <ErrorNote>{error}</ErrorNote>
+      {menu && menu.length === 0 && (
+        <Card className="mb-4 p-5 text-center">
+          <p className="font-semibold">Your menu is empty</p>
+          <p className="mt-1 text-sm text-muted">Start with a standard canteen menu of 40+ dishes, then edit prices and remove what you don't make.</p>
+          <Button className="mt-3" loading={importing} onClick={importDefaults}><ListPlus className="size-4" /> Add standard menu</Button>
+        </Card>
+      )}
       {!menu ? <Spinner /> : CATS.map((cat) => {
         const items = menu.filter((m) => m.category === cat)
         if (!items.length) return null

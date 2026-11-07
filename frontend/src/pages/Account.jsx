@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { LogOut, Moon, Sun } from 'lucide-react'
-import { api } from '../api'
+import { api, tokenStore } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { Button, Card, ErrorNote, Input, PageTitle, useToast } from '../components/ui'
@@ -33,9 +33,12 @@ export default function Account() {
     setBusy('pw')
     setErrors({})
     try {
-      await api('/api/auth/password', { method: 'POST', body: pw })
+      // The server logs out every other device and returns a fresh token for this one.
+      const res = await api('/api/auth/password', { method: 'POST', body: pw })
+      tokenStore.set(res.token)
+      setUser(res.user)
       setPw({ currentPassword: '', newPassword: '' })
-      toast('Password changed', 'good')
+      toast('Password changed. Other devices have been logged out.', 'good')
     } catch (err) {
       setErrors({ pw: err.message })
     } finally {

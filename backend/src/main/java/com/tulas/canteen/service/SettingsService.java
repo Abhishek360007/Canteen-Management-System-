@@ -80,6 +80,8 @@ public class SettingsService implements SmartInitializingSingleton {
         s.setMaxQtyPerItem(r.maxQtyPerItem());
         s.setNoShowMinutes(r.noShowMinutes());
         s.setCashAllowed(r.cashAllowed());
+        s.setUpiId(r.upiId() == null || r.upiId().isBlank() ? null : r.upiId().trim());
+        s.setUpiName(r.upiName() == null || r.upiName().isBlank() ? null : r.upiName().trim());
         live.toEveryone("canteen", Map.of("status", s.getStatus()));
         return CanteenView.of(s, isOpenNow(s));
     }

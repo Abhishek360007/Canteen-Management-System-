@@ -3,6 +3,7 @@ package com.tulas.canteen.service;
 import com.tulas.canteen.domain.*;
 import com.tulas.canteen.dto.AdminDtos.*;
 import com.tulas.canteen.repo.OrderRepository;
+import com.tulas.canteen.repo.TopupRequestRepository;
 import com.tulas.canteen.repo.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,11 +25,13 @@ public class ReportService {
 
     private final OrderRepository orders;
     private final UserRepository users;
+    private final TopupRequestRepository topups;
     private final Clock clock;
 
-    public ReportService(OrderRepository orders, UserRepository users, Clock clock) {
+    public ReportService(OrderRepository orders, UserRepository users, TopupRequestRepository topups, Clock clock) {
         this.orders = orders;
         this.users = users;
+        this.topups = topups;
         this.clock = clock;
     }
 
@@ -64,6 +67,7 @@ public class ReportService {
                 Math.round(avgRating * 10) / 10.0,
                 count(todays, OrderStatus.NO_SHOW),
                 count(todays, OrderStatus.CANCELLED),
+                topups.countByStatus(TopupRequest.Status.PENDING),
                 days,
                 topItems(week, 5),
                 busy);

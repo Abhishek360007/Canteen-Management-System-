@@ -55,6 +55,11 @@ public class MenuService {
         return MenuItemView.of(m, false);
     }
 
+    @Transactional(readOnly = true)
+    public String nameOf(Long id) {
+        return load(id).getName();
+    }
+
     /** Archive instead of delete so past orders and ratings keep pointing at a real dish. */
     @Transactional
     public void archive(Long id) {
@@ -71,6 +76,22 @@ public class MenuService {
         m.setAvailable(s.available());
         changed();
         return MenuItemView.of(m, false);
+    }
+
+    /** Adds the standard canteen menu, skipping any dish whose name is already on the menu. */
+    @Transactional
+    public int[] importDefaults() {
+        Set<String> existing = new java.util.HashSet<>();
+        menu.findByArchivedFalseOrderByCategoryAscNameAsc().forEach(m -> existing.add(m.getName().trim().toLowerCase()));
+        int added = 0;
+        for (DefaultMenu.Dish d : DefaultMenu.DISHES) {
+            if (existing.add(d.name().toLowerCase())) {
+                menu.save(d.toMenuItem());
+                added++;
+            }
+        }
+        if (added > 0) changed();
+        return new int[]{added, DefaultMenu.DISHES.size() - added};
     }
 
     @Transactional

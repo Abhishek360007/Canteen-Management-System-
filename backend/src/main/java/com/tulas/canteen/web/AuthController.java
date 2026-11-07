@@ -2,7 +2,9 @@ package com.tulas.canteen.web;
 
 import com.tulas.canteen.dto.AuthDtos.*;
 import com.tulas.canteen.security.AuthUser;
+import com.tulas.canteen.security.LoginGuard;
 import com.tulas.canteen.service.AuthService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -20,13 +22,13 @@ public class AuthController {
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public AuthResponse register(@Valid @RequestBody RegisterRequest r) {
-        return auth.register(r);
+    public AuthResponse register(@Valid @RequestBody RegisterRequest r, HttpServletRequest req) {
+        return auth.register(r, LoginGuard.clientIp(req));
     }
 
     @PostMapping("/login")
-    public AuthResponse login(@Valid @RequestBody LoginRequest r) {
-        return auth.login(r);
+    public AuthResponse login(@Valid @RequestBody LoginRequest r, HttpServletRequest req) {
+        return auth.login(r, LoginGuard.clientIp(req));
     }
 
     @GetMapping("/me")
@@ -39,9 +41,9 @@ public class AuthController {
         return auth.updateProfile(me.id(), r);
     }
 
+    /** Returns a new token: the password change logs out every other device. */
     @PostMapping("/password")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void changePassword(@AuthenticationPrincipal AuthUser me, @Valid @RequestBody ChangePasswordRequest r) {
-        auth.changePassword(me.id(), r);
+    public AuthResponse changePassword(@AuthenticationPrincipal AuthUser me, @Valid @RequestBody ChangePasswordRequest r) {
+        return auth.changePassword(me.id(), r);
     }
 }

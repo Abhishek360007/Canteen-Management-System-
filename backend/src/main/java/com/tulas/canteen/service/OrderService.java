@@ -10,9 +10,12 @@ import com.tulas.canteen.repo.MenuItemRepository;
 import com.tulas.canteen.repo.OrderRepository;
 import com.tulas.canteen.repo.UserRepository;
 import com.tulas.canteen.security.AuthUser;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
@@ -34,19 +37,23 @@ public class OrderService {
     private final MenuItemRepository menu;
     private final UserRepository users;
     private final DailyCounterRepository counters;
+    private final CounterService counterService;
     private final WalletService wallet;
     private final SettingsService settings;
     private final LiveHub live;
     private final Clock clock;
+    private final TransactionTemplate tx;
     private final SecureRandom random = new SecureRandom();
 
     public OrderService(OrderRepository orders, MenuItemRepository menu, UserRepository users,
-                        DailyCounterRepository counters, WalletService wallet, SettingsService settings,
-                        LiveHub live, Clock clock) {
+                        DailyCounterRepository counters, CounterService counterService, WalletService wallet,
+                        SettingsService settings, LiveHub live, Clock clock, PlatformTransactionManager txm) {
+        this.tx = new TransactionTemplate(txm);
         this.orders = orders;
         this.menu = menu;
         this.users = users;
         this.counters = counters;
+        this.counterService = counterService;
         this.wallet = wallet;
         this.settings = settings;
         this.live = live;
@@ -60,9 +67,21 @@ public class OrderService {
      * If any step fails, everything (plates, money) is rolled back together.
      * The same Idempotency-Key returns the first order instead of creating a duplicate,
      * which protects against double taps and retries on bad Wi-Fi.
+     * <p>
+     * The day's order-number counter is created first, in its own short transaction, so an order never
+     * holds two database connections at once (with a small pool that could stall checkout under load).
      */
-    @Transactional
     public OrderView place(AuthUser me, PlaceOrderRequest req, String idempotencyKey) {
+        LocalDate day = clock.today();
+        try {
+            counterService.createIfMissing(day);
+        } catch (DataIntegrityViolationException createdByAnotherOrder) {
+            // Two "first orders of the day" at once: the other one created the row. Carry on.
+        }
+        return tx.execute(status -> placeInTransaction(me, req, idempotencyKey, day));
+    }
+
+    private OrderView placeInTransaction(AuthUser me, PlaceOrderRequest req, String idempotencyKey, LocalDate today) {
         String key = idempotencyKey == null || idempotencyKey.isBlank() ? null : idempotencyKey.trim();
         if (key != null && key.length() > 64) throw ApiException.badRequest("Idempotency-Key is too long.");
         if (key != null) {
@@ -109,7 +128,6 @@ public class OrderService {
         }
 
         LocalTime slot = parseSlot(req.pickupSlot(), rules);
-        LocalDate today = clock.today();
         String code = nextCode(today);
 
         // Reserve plates. Each reservation is a conditional UPDATE, so two students can't buy the last plate.
@@ -339,9 +357,12 @@ public class OrderService {
         return slot;
     }
 
-    /** Next order number for the day. The row lock makes concurrent orders queue up for a number. */
+    /**
+     * Next order number for the day (the row was created by {@link #place} before this transaction).
+     * The row lock makes concurrent orders queue up for a number.
+     */
     private String nextCode(LocalDate day) {
-        DailyCounter c = counters.lockDay(day).orElseGet(() -> counters.saveAndFlush(new DailyCounter(day)));
+        DailyCounter c = counters.lockDay(day).orElseThrow();
         return String.format("T-%03d", c.next());
     }
 

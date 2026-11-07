@@ -43,7 +43,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         if (token != null) {
             jwt.verify(token)
-                    .flatMap(users::findById)
+                    .flatMap(t -> users.findById(t.userId())
+                            // Token from before a password change/reset: no longer valid.
+                            .filter(u -> u.getTokenVersion() == t.version()))
                     .filter(u -> !u.isBlocked())
                     .ifPresent(u -> {
                         var auth = new UsernamePasswordAuthenticationToken(
