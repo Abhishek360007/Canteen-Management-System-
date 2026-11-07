@@ -36,6 +36,11 @@ public class Order {
     @JoinColumn(name = "user_id")
     private User user;
 
+    /** The canteen that cooks and hands over this order (= pickup location). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "canteen_id")
+    private Canteen canteen;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private OrderStatus status = OrderStatus.PLACED;
@@ -112,6 +117,8 @@ public class Order {
     public LocalDate getOrderDate() { return orderDate; }
     public void setOrderDate(LocalDate orderDate) { this.orderDate = orderDate; }
     public User getUser() { return user; }
+    public Canteen getCanteen() { return canteen; }
+    public void setCanteen(Canteen canteen) { this.canteen = canteen; }
     public void setUser(User user) { this.user = user; }
     public OrderStatus getStatus() { return status; }
     public void setStatus(OrderStatus status) { this.status = status; }

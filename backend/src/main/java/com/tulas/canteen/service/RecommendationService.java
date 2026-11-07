@@ -67,9 +67,9 @@ public class RecommendationService {
     // ---------------------------------------------------------------- feeds
 
     @Transactional(readOnly = true)
-    public Feed feed(Long userId) {
+    public Feed feed(Long userId, Long canteenId) {
         Model m = model();
-        Map<Long, MenuItem> live = orderable();
+        Map<Long, MenuItem> live = orderable(canteenId);
         Map<Long, MenuItem> all = new HashMap<>();
         menu.findAll().forEach(d -> all.put(d.getId(), d));
         List<Order> mine = orders.findTop50ByUserIdOrderByCreatedAtDesc(userId).stream()
@@ -154,9 +154,10 @@ public class RecommendationService {
     public List<Rec> forCart(Collection<Long> cartIds) {
         if (cartIds.isEmpty()) return List.of();
         Model m = model();
-        Map<Long, MenuItem> live = orderable();
         Set<Long> cart = new HashSet<>(cartIds);
         List<MenuItem> cartDishes = menu.findAllById(cart);
+        if (cartDishes.isEmpty()) return List.of();
+        Map<Long, MenuItem> live = orderable(cartDishes.get(0).getCanteenId());
         boolean allVeg = !cartDishes.isEmpty() && cartDishes.stream().allMatch(MenuItem::isVeg);
         Set<Category> cartCats = cartDishes.stream().map(MenuItem::getCategory)
                 .collect(Collectors.toCollection(() -> EnumSet.noneOf(Category.class)));
@@ -191,7 +192,7 @@ public class RecommendationService {
     public List<Rec> similar(Long dishId) {
         MenuItem src = menu.findById(dishId).orElse(null);
         if (src == null) return List.of();
-        return orderable().values().stream()
+        return orderable(src.getCanteenId()).values().stream()
                 .filter(d -> !d.getId().equals(dishId) && d.getCategory() == src.getCategory())
                 .filter(d -> !src.isVeg() || d.isVeg())
                 .sorted(Comparator.comparingDouble((MenuItem d) -> Math.abs(d.getPrice().doubleValue() - src.getPrice().doubleValue()))
@@ -231,9 +232,9 @@ public class RecommendationService {
     }
 
     /** Dishes a student can order right now. */
-    private Map<Long, MenuItem> orderable() {
+    private Map<Long, MenuItem> orderable(Long canteenId) {
         Map<Long, MenuItem> map = new LinkedHashMap<>();
-        for (MenuItem d : menu.findByArchivedFalseOrderByCategoryAscNameAsc()) {
+        for (MenuItem d : menu.findByCanteenIdAndArchivedFalseOrderByCategoryAscNameAsc(canteenId)) {
             boolean soldOut = d.getStockToday() != null && d.getStockToday() <= 0;
             if (d.isAvailable() && !soldOut) map.put(d.getId(), d);
         }

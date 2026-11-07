@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { AuthProvider } from './context/AuthContext'
 import { CartProvider } from './context/CartContext'
+import { CanteenProvider } from './context/CanteenContext'
 import { LiveProvider } from './context/LiveContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { ToastProvider } from './components/ui'
@@ -20,9 +21,11 @@ createRoot(document.getElementById('root')).render(
         <ToastProvider>
           <AuthProvider>
             <LiveProvider>
-              <CartProvider>
-                <App />
-              </CartProvider>
+              <CanteenProvider>
+                <CartProvider>
+                  <App />
+                </CartProvider>
+              </CanteenProvider>
             </LiveProvider>
           </AuthProvider>
         </ToastProvider>

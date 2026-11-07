@@ -5,7 +5,7 @@ import com.tulas.canteen.domain.*;
 import com.tulas.canteen.dto.OrderDtos.CartLine;
 import com.tulas.canteen.dto.OrderDtos.OrderView;
 import com.tulas.canteen.dto.OrderDtos.PlaceOrderRequest;
-import com.tulas.canteen.repo.DailyCounterRepository;
+import com.tulas.canteen.repo.OrderCounterRepository;
 import com.tulas.canteen.repo.MenuItemRepository;
 import com.tulas.canteen.repo.OrderRepository;
 import com.tulas.canteen.repo.UserRepository;
@@ -36,10 +36,10 @@ public class OrderService {
     private final OrderRepository orders;
     private final MenuItemRepository menu;
     private final UserRepository users;
-    private final DailyCounterRepository counters;
+    private final OrderCounterRepository orderCounters;
     private final CounterService counterService;
     private final WalletService wallet;
-    private final SettingsService settings;
+    private final CanteenService canteens;
     private final LiveHub live;
     private final Clock clock;
     private final LoyaltyService loyalty;
@@ -48,8 +48,8 @@ public class OrderService {
     private final SecureRandom random = new SecureRandom();
 
     public OrderService(OrderRepository orders, MenuItemRepository menu, UserRepository users,
-                        DailyCounterRepository counters, CounterService counterService, WalletService wallet,
-                        SettingsService settings, LiveHub live, Clock clock, PlatformTransactionManager txm, LoyaltyService loyalty,
+                        OrderCounterRepository orderCounters, CounterService counterService, WalletService wallet,
+                        CanteenService canteens, LiveHub live, Clock clock, PlatformTransactionManager txm, LoyaltyService loyalty,
                         NotificationService notifications) {
         this.notifications = notifications;
         this.tx = new TransactionTemplate(txm);
@@ -57,10 +57,10 @@ public class OrderService {
         this.orders = orders;
         this.menu = menu;
         this.users = users;
-        this.counters = counters;
+        this.orderCounters = orderCounters;
         this.counterService = counterService;
         this.wallet = wallet;
-        this.settings = settings;
+        this.canteens = canteens;
         this.live = live;
         this.clock = clock;
     }
@@ -78,15 +78,24 @@ public class OrderService {
      */
     public OrderView place(AuthUser me, PlaceOrderRequest req, String idempotencyKey) {
         LocalDate day = clock.today();
+        // An order belongs to one canteen: the one that sells the dishes. Mixed carts are refused.
+        Set<Long> canteenIds = new HashSet<>();
+        menu.findAllById(req.items().stream().map(CartLine::menuItemId).toList()).forEach(m -> canteenIds.add(m.getCanteenId()));
+        if (canteenIds.size() > 1) {
+            throw ApiException.badRequest("Your cart has dishes from different canteens. Order from one canteen at a time.");
+        }
+        Canteen canteen = canteenIds.isEmpty() ? canteens.defaultCanteen() : canteens.get(canteenIds.iterator().next());
+        Long canteenId = canteen.getId();
         try {
-            counterService.createIfMissing(day);
+            counterService.createIfMissing(day, canteenId, canteen.getCode());
         } catch (DataIntegrityViolationException createdByAnotherOrder) {
             // Two "first orders of the day" at once: the other one created the row. Carry on.
         }
-        return tx.execute(status -> placeInTransaction(me, req, idempotencyKey, day));
+        return tx.execute(status -> placeInTransaction(me, req, idempotencyKey, day, canteenId));
     }
 
-    private OrderView placeInTransaction(AuthUser me, PlaceOrderRequest req, String idempotencyKey, LocalDate today) {
+    private OrderView placeInTransaction(AuthUser me, PlaceOrderRequest req, String idempotencyKey, LocalDate today,
+                                         Long canteenId) {
         String key = idempotencyKey == null || idempotencyKey.isBlank() ? null : idempotencyKey.trim();
         if (key != null && key.length() > 64) throw ApiException.badRequest("Idempotency-Key is too long.");
         if (key != null) {
@@ -94,17 +103,17 @@ public class OrderService {
             if (existing.isPresent()) return studentView(orders.findFull(existing.get().getId()).orElseThrow());
         }
 
-        CanteenSettings rules = settings.get();
-        if (!settings.isOpenNow(rules)) {
-            throw ApiException.badRequest("Tula's Canteen isn't taking orders right now (open "
+        Canteen rules = canteens.get(canteenId);
+        if (!canteens.isOpenNow(rules)) {
+            throw ApiException.badRequest(rules.getName() + " isn't taking orders right now (open "
                     + rules.getOpenTime().format(HM) + "–" + rules.getCloseTime().format(HM) + ").");
         }
         if (req.paymentMethod() == PaymentMethod.CASH && !rules.isCashAllowed()) {
             throw ApiException.badRequest("Cash orders are switched off. Please pay from your wallet.");
         }
-        if (orders.countByUserIdAndStatusIn(me.id(), ACTIVE) >= rules.getMaxActiveOrders()) {
+        if (orders.countByUserIdAndCanteenIdAndStatusIn(me.id(), canteenId, ACTIVE) >= rules.getMaxActiveOrders()) {
             throw ApiException.badRequest("You already have " + rules.getMaxActiveOrders()
-                    + " orders in progress. Collect one before ordering again.");
+                    + " orders in progress at " + rules.getName() + ". Collect one before ordering again.");
         }
 
         // Merge repeated lines for the same dish.
@@ -119,6 +128,9 @@ public class OrderService {
         for (var e : qty.entrySet()) {
             MenuItem m = dishes.get(e.getKey());
             if (m == null || m.isArchived()) throw ApiException.badRequest("A dish in your cart is no longer on the menu.");
+            if (!canteenId.equals(m.getCanteenId())) {
+                throw ApiException.badRequest("Your cart has dishes from different canteens. Order from one canteen at a time.");
+            }
             if (!m.isAvailable()) throw ApiException.badRequest(m.getName() + " isn't available right now.");
             if (e.getValue() > rules.getMaxQtyPerItem()) {
                 throw ApiException.badRequest("You can order at most " + rules.getMaxQtyPerItem() + " of " + m.getName() + ".");
@@ -136,7 +148,7 @@ public class OrderService {
         int redeem = req.redeemPoints() == null ? 0 : req.redeemPoints();
         BigDecimal discount = redeem > 0 ? loyalty.discountFor(redeem, total) : BigDecimal.ZERO;
         total = total.subtract(discount);
-        String code = nextCode(today);
+        String code = nextCode(today, rules);
 
         // Reserve plates. Each reservation is a conditional UPDATE, so two students can't buy the last plate.
         for (var e : qty.entrySet()) {
@@ -153,6 +165,7 @@ public class OrderService {
 
         Order o = new Order();
         o.setUser(users.getReferenceById(me.id()));
+        o.setCanteen(rules);
         o.setCode(code);
         o.setOrderDate(today);
         o.setPaymentMethod(req.paymentMethod());
@@ -175,7 +188,7 @@ public class OrderService {
         for (var e : qty.entrySet()) {
             MenuItem m = dishes.get(e.getKey());
             if (m.getStockToday() != null) {
-                notifications.checkLowStock(m.getId(), m.getName(), menu.stockOf(m.getId()), m.getDefaultStock());
+                notifications.checkLowStock(canteenId, m.getId(), m.getName(), menu.stockOf(m.getId()), m.getDefaultStock());
             }
         }
         notifyChange(o);
@@ -221,19 +234,20 @@ public class OrderService {
     // ---------------------------------------------------------------- kitchen
 
     @Transactional(readOnly = true)
-    public List<OrderView> kitchenQueue() {
-        return orders.findByOrderDateAndStatusInOrderByCreatedAtAsc(clock.today(), ACTIVE)
+    public List<OrderView> kitchenQueue(Long canteenId) {
+        return orders.findByCanteenIdAndOrderDateAndStatusInOrderByCreatedAtAsc(canteenId, clock.today(), ACTIVE)
                 .stream().map(OrderView::staff).toList();
     }
 
     @Transactional(readOnly = true)
-    public List<OrderView> today() {
-        return orders.findByOrderDateOrderByCreatedAtDesc(clock.today()).stream().map(OrderView::staff).toList();
+    public List<OrderView> today(Long canteenId) {
+        return orders.findByCanteenIdAndOrderDateOrderByCreatedAtDesc(canteenId, clock.today()).stream().map(OrderView::staff).toList();
     }
 
     @Transactional
-    public OrderView updateStatus(Long id, OrderStatus next, String reason) {
+    public OrderView updateStatus(AuthUser me, Long id, OrderStatus next, String reason) {
         Order o = orders.findFull(id).orElseThrow(() -> ApiException.notFound("Order not found"));
+        canteens.checkAccess(me, o.getCanteen() == null ? null : o.getCanteen().getId());
         OrderStatus cur = o.getStatus();
         if (!cur.isActive()) throw ApiException.conflict("Order " + o.getCode() + " is already " + label(cur) + ".");
 
@@ -275,10 +289,15 @@ public class OrderService {
      * Wrong codes are counted and saved even though the request fails, so guessing is limited.
      */
     @Transactional(noRollbackFor = ApiException.class)
-    public VerifyResult verify(String rawCode, String otp) {
-        String code = normaliseCode(rawCode);
+    public VerifyResult verify(Long canteenId, String rawCode, String otp) {
+        Canteen here = canteens.get(canteenId);
+        String code = normaliseCode(rawCode, here.getCode());
         Order o = orders.findByOrderDateAndCodeIgnoreCase(clock.today(), code)
                 .orElseThrow(() -> ApiException.notFound("No order " + code + " today."));
+        if (o.getCanteen() != null && !o.getCanteen().getId().equals(canteenId)) {
+            throw ApiException.conflict("Order " + o.getCode() + " is for " + o.getCanteen().getName()
+                    + ". Ask the student to collect it there.");
+        }
         if (!o.getStatus().isActive()) {
             throw ApiException.conflict("Order " + o.getCode() + " is already " + label(o.getStatus()) + ".");
         }
@@ -302,8 +321,12 @@ public class OrderService {
 
     @Transactional
     public int markNoShows() {
-        int minutes = settings.get().getNoShowMinutes();
-        List<Order> late = orders.findByStatusAndReadyAtBefore(OrderStatus.READY, Instant.now().minusSeconds(minutes * 60L));
+        Instant now = Instant.now();
+        List<Order> late = orders.findByStatusAndReadyAtBefore(OrderStatus.READY, now.minusSeconds(10 * 60L)).stream()
+                .filter(o -> {
+                    int minutes = o.getCanteen() == null ? 45 : o.getCanteen().getNoShowMinutes();
+                    return o.getReadyAt().isBefore(now.minusSeconds(minutes * 60L));
+                }).toList();
         late.forEach(o -> {
             markNoShow(o);
             notifyChange(o);
@@ -385,7 +408,9 @@ public class OrderService {
         Long ahead = null;
         Integer eta = null;
         if (IN_KITCHEN.contains(o.getStatus())) {
-            ahead = orders.countAhead(o.getOrderDate(), IN_KITCHEN, o.getId());
+            ahead = o.getCanteen() == null
+                    ? orders.countAhead(o.getOrderDate(), IN_KITCHEN, o.getId())
+                    : orders.countAheadAt(o.getCanteen().getId(), o.getOrderDate(), IN_KITCHEN, o.getId());
             int base = o.getStatus() == OrderStatus.PLACED ? o.getEstPrepMinutes() : Math.max(2, o.getEstPrepMinutes() / 2);
             eta = base + (int) (ahead * 2);
         } else if (o.getStatus() == OrderStatus.READY) {
@@ -394,7 +419,7 @@ public class OrderService {
         return OrderView.of(o, o.getStatus().isActive(), ahead, eta);
     }
 
-    private LocalTime parseSlot(String raw, CanteenSettings rules) {
+    private LocalTime parseSlot(String raw, Canteen rules) {
         if (raw == null || raw.isBlank()) return null;
         LocalTime slot = LocalTime.parse(raw, HM);
         if (slot.isBefore(clock.now().minusMinutes(5))) throw ApiException.badRequest("That pickup time has already passed.");
@@ -405,19 +430,22 @@ public class OrderService {
     }
 
     /**
-     * Next order number for the day (the row was created by {@link #place} before this transaction).
-     * The row lock makes concurrent orders queue up for a number.
+     * Next order number for the day at this canteen, e.g. T-017 (the counter row was created by {@link #place}
+     * before this transaction). The row lock makes concurrent orders queue up for a number.
      */
-    private String nextCode(LocalDate day) {
-        DailyCounter c = counters.lockDay(day).orElseThrow();
-        return String.format("T-%03d", c.next());
+    private String nextCode(LocalDate day, Canteen canteen) {
+        OrderCounter c = orderCounters.lock(OrderCounter.key(day, canteen.getId())).orElseThrow();
+        return canteen.getCode() + "-" + String.format("%03d", c.next());
     }
 
-    /** Accepts "T-017", "t017", "t 17" or "17" and returns "T-017". */
-    static String normaliseCode(String raw) {
+    /** Accepts "T-017", "t017", "f 17" or just "17" (this canteen's prefix is assumed) and returns e.g. "T-017". */
+    static String normaliseCode(String raw, String canteenCode) {
         String digits = raw == null ? "" : raw.replaceAll("\\D", "");
-        if (digits.isEmpty() || digits.length() > 6) throw ApiException.badRequest("Enter a valid order number, e.g. T-017.");
-        return String.format("T-%03d", Integer.parseInt(digits));
+        String letters = raw == null ? "" : raw.replaceAll("[^A-Za-z]", "").toUpperCase();
+        if (digits.isEmpty() || digits.length() > 6 || letters.length() > 3) {
+            throw ApiException.badRequest("Enter a valid order number, e.g. " + canteenCode + "-017.");
+        }
+        return (letters.isEmpty() ? canteenCode : letters) + "-" + String.format("%03d", Integer.parseInt(digits));
     }
 
     private static ApiException badMove(OrderStatus from, OrderStatus to) {

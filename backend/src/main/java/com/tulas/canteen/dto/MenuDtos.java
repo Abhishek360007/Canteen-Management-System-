@@ -13,13 +13,13 @@ public final class MenuDtos {
     public record MenuItemView(Long id, String name, String description, BigDecimal price, Category category,
                                boolean veg, String emoji, String imageUrl, boolean available, Integer stockToday,
                                Integer defaultStock, int prepMinutes, Double rating, int ratingCount,
-                               boolean soldOut, boolean favourite) {
+                               boolean soldOut, boolean favourite, Long canteenId) {
         public static MenuItemView of(MenuItem m, boolean favourite) {
             boolean soldOut = m.getStockToday() != null && m.getStockToday() <= 0;
             return new MenuItemView(m.getId(), m.getName(), m.getDescription(), m.getPrice(), m.getCategory(),
                     m.isVeg(), m.getEmoji(), m.getImageUrl(), m.isAvailable(), m.getStockToday(),
                     m.getDefaultStock(), m.getPrepMinutes(), m.getAverageRating(), m.getRatingCount(),
-                    soldOut, favourite);
+                    soldOut, favourite, m.getCanteenId());
         }
     }
 

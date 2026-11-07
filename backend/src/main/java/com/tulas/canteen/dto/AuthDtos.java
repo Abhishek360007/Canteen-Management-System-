@@ -32,10 +32,10 @@ public final class AuthDtos {
                                        @Pattern(regexp = "^$|^[0-9]{10}$", message = "must be 10 digits") String phone) {}
 
     public record UserView(Long id, String name, String email, Role role, String phone, String rollNo,
-                           BigDecimal walletBalance, boolean blocked, Instant createdAt) {
+                           BigDecimal walletBalance, boolean blocked, Instant createdAt, Long canteenId) {
         public static UserView of(User u) {
             return new UserView(u.getId(), u.getName(), u.getEmail(), u.getRole(), u.getPhone(), u.getRollNo(),
-                    u.getWalletBalance(), u.isBlocked(), u.getCreatedAt());
+                    u.getWalletBalance(), u.isBlocked(), u.getCreatedAt(), u.getCanteenId());
         }
     }
 

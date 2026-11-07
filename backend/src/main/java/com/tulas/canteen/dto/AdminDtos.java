@@ -25,7 +25,11 @@ public final class AdminDtos {
     public record CreateStaffRequest(@NotBlank @Size(max = 80) String name,
                                      @NotBlank @Email @Size(max = 120) String email,
                                      @NotBlank @Size(min = 6, max = 72) String password,
-                                     @Pattern(regexp = "^$|^[0-9]{10}$", message = "must be 10 digits") String phone) {}
+                                     @Pattern(regexp = "^$|^[0-9]{10}$", message = "must be 10 digits") String phone,
+                                     /** Which canteen they work at; defaults to the first canteen. */
+                                     Long canteenId) {}
+
+    public record AssignCanteenRequest(@NotNull Long canteenId) {}
 
     public record BlockRequest(boolean blocked) {}
 
@@ -47,24 +51,38 @@ public final class AdminDtos {
         }
     }
 
-    public record CanteenView(CanteenStatus status, LocalTime openTime, LocalTime closeTime, int maxActiveOrders,
-                              int maxQtyPerItem, int noShowMinutes, boolean cashAllowed, boolean openNow,
+    /** A canteen as shown to everyone; upiId/upiName are the campus-wide wallet top-up details. */
+    public record CanteenView(Long id, String name, String code, String location, CanteenStatus status,
+                              LocalTime openTime, LocalTime closeTime, int maxActiveOrders, int maxQtyPerItem,
+                              int noShowMinutes, boolean cashAllowed, boolean active, boolean openNow,
                               String upiId, String upiName) {
-        public static CanteenView of(CanteenSettings s, boolean openNow) {
-            return new CanteenView(s.getStatus(), s.getOpenTime(), s.getCloseTime(), s.getMaxActiveOrders(),
-                    s.getMaxQtyPerItem(), s.getNoShowMinutes(), s.isCashAllowed(), openNow,
-                    s.getUpiId(), s.getUpiName());
+        public static CanteenView of(com.tulas.canteen.domain.Canteen c, boolean openNow, String upiId, String upiName) {
+            return new CanteenView(c.getId(), c.getName(), c.getCode(), c.getLocation(), c.getStatus(), c.getOpenTime(),
+                    c.getCloseTime(), c.getMaxActiveOrders(), c.getMaxQtyPerItem(), c.getNoShowMinutes(),
+                    c.isCashAllowed(), c.isActive(), openNow, upiId, upiName);
         }
     }
 
+    public record CanteenRequest(@NotBlank @Size(max = 60) String name,
+                                 @NotBlank @Pattern(regexp = "^[A-Za-z]{1,3}$", message = "1-3 letters") String code,
+                                 @Size(max = 120) String location,
+                                 @NotNull LocalTime openTime, @NotNull LocalTime closeTime,
+                                 @Min(1) @Max(10) int maxActiveOrders, @Min(1) @Max(20) int maxQtyPerItem,
+                                 @Min(10) @Max(240) int noShowMinutes, boolean cashAllowed, boolean active) {}
+
+    /** Per-canteen comparison row for admins. */
+    public record CanteenStats(Long id, String name, String code, long ordersToday, BigDecimal revenueToday,
+                               long orders30d, BigDecimal revenue30d, BigDecimal avgOrderValue, double avgRating,
+                               long noShows30d, String topDish) {}
+
     public record StatusRequest(@NotNull CanteenStatus status) {}
 
-    public record SettingsRequest(@NotNull LocalTime openTime, @NotNull LocalTime closeTime,
-                                  @Min(1) @Max(10) int maxActiveOrders, @Min(1) @Max(20) int maxQtyPerItem,
-                                  @Min(10) @Max(240) int noShowMinutes, boolean cashAllowed,
-                                  @Size(max = 60) @Pattern(regexp = "^$|^[A-Za-z0-9._-]{2,}@[A-Za-z]{2,}$",
+    /** Campus-wide settings: the UPI ID students pay for wallet top-ups (one wallet works at every canteen). */
+    public record SettingsRequest(@Size(max = 60) @Pattern(regexp = "^$|^[A-Za-z0-9._-]{2,}@[A-Za-z]{2,}$",
                                           message = "must look like name@bank") String upiId,
                                   @Size(max = 60) String upiName) {}
+
+    public record SettingsView(String upiId, String upiName) {}
 
     // ---- UPI top-ups
 

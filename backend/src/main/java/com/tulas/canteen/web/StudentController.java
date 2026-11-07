@@ -34,9 +34,12 @@ public class StudentController {
     private final TopupService topups;
     private final LoyaltyService loyalty;
     private final RecommendationService recommender;
+    private final com.tulas.canteen.service.CanteenService canteens;
 
     public StudentController(OrderService orders, WalletService wallet, MenuService menu, ReportService reports,
-                             TopupService topups, LoyaltyService loyalty, RecommendationService recommender) {
+                             TopupService topups, LoyaltyService loyalty, RecommendationService recommender,
+                             com.tulas.canteen.service.CanteenService canteens) {
+        this.canteens = canteens;
         this.loyalty = loyalty;
         this.recommender = recommender;
         this.orders = orders;
@@ -101,8 +104,8 @@ public class StudentController {
     // ---- recommendations
 
     @GetMapping("/recommendations")
-    public RecommendationService.Feed recommendations(@AuthenticationPrincipal AuthUser me) {
-        return recommender.feed(me.id());
+    public RecommendationService.Feed recommendations(@AuthenticationPrincipal AuthUser me, @RequestParam(required = false) Long canteenId) {
+        return recommender.feed(me.id(), canteens.resolve(me, canteenId).getId());
     }
 
     public record CartBody(@jakarta.validation.constraints.Size(max = 30) List<Long> itemIds) {}

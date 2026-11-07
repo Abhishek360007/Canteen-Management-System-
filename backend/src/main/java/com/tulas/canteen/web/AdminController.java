@@ -52,13 +52,18 @@ public class AdminController {
     private final TopupService topups;
     private final AuditService audit;
     private final NotificationService notifications;
+    private final CanteenService canteens;
+    private final com.tulas.canteen.repo.CanteenRepository canteenRepo;
     private final LiveHub live;
     private final Clock clock;
 
     public AdminController(ReportService reports, UserRepository users, OrderRepository orders,
                            AnnouncementRepository announcements, AuditLogRepository auditLogs, MenuService menu,
                            WalletService wallet, AuthService auth, SettingsService settings, TopupService topups,
-                           AuditService audit, LiveHub live, Clock clock, NotificationService notifications) {
+                           AuditService audit, LiveHub live, Clock clock, NotificationService notifications,
+                           CanteenService canteens, com.tulas.canteen.repo.CanteenRepository canteenRepo) {
+        this.canteens = canteens;
+        this.canteenRepo = canteenRepo;
         this.notifications = notifications;
         this.reports = reports;
         this.users = users;
@@ -76,8 +81,37 @@ public class AdminController {
     }
 
     @GetMapping("/dashboard")
-    public Dashboard dashboard() {
-        return reports.dashboard();
+    public Dashboard dashboard(@RequestParam(required = false) Long canteenId) {
+        return reports.dashboard(canteenId);
+    }
+
+    // ---- canteens
+
+    @GetMapping("/canteens")
+    public List<CanteenView> allCanteens() {
+        return canteens.list(true);
+    }
+
+    @PostMapping("/canteens")
+    @ResponseStatus(HttpStatus.CREATED)
+    public CanteenView createCanteen(@AuthenticationPrincipal AuthUser me, @Valid @RequestBody CanteenRequest r) {
+        CanteenView v = canteens.create(r);
+        audit.record(me, "CANTEEN_ADDED", v.name(), "Code " + v.code() + (v.location() == null ? "" : " · " + v.location()));
+        return v;
+    }
+
+    @PutMapping("/canteens/{id}")
+    public CanteenView updateCanteen(@AuthenticationPrincipal AuthUser me, @PathVariable Long id, @Valid @RequestBody CanteenRequest r) {
+        CanteenView v = canteens.update(id, r);
+        audit.record(me, "CANTEEN_UPDATED", v.name(), "Hours " + r.openTime() + "–" + r.closeTime()
+                + " · cash " + (r.cashAllowed() ? "on" : "off") + (r.active() ? "" : " · hidden from students"));
+        return v;
+    }
+
+    /** Sales, order value, rating and no-shows side by side for every canteen. */
+    @GetMapping("/canteens/compare")
+    public List<CanteenStats> compareCanteens() {
+        return reports.compare(canteenRepo.findAllByOrderBySortOrderAscIdAsc());
     }
 
     // ---- users
@@ -138,9 +172,24 @@ public class AdminController {
 
     @PostMapping("/staff")
     @ResponseStatus(HttpStatus.CREATED)
+    @Transactional
     public UserView createStaff(@AuthenticationPrincipal AuthUser me, @Valid @RequestBody CreateStaffRequest r) {
+        var canteen = r.canteenId() == null ? canteens.defaultCanteen() : canteens.get(r.canteenId());
         User u = auth.createUser(r.name(), r.email(), r.password(), r.phone(), Role.STAFF);
-        audit.record(me, "STAFF_CREATED", AuditService.who(u), null);
+        u.setCanteenId(canteen.getId());
+        audit.record(me, "STAFF_CREATED", AuditService.who(u), "Works at " + canteen.getName());
+        return UserView.of(u);
+    }
+
+    /** Move a kitchen staff member to another canteen. */
+    @PutMapping("/users/{id}/canteen")
+    @Transactional
+    public UserView assignCanteen(@AuthenticationPrincipal AuthUser me, @PathVariable Long id, @Valid @RequestBody AssignCanteenRequest r) {
+        User u = users.findById(id).orElseThrow(() -> ApiException.notFound("User not found"));
+        if (u.getRole() != Role.STAFF) throw ApiException.badRequest("Only kitchen staff work at a canteen.");
+        var canteen = canteens.get(r.canteenId());
+        u.setCanteenId(canteen.getId());
+        audit.record(me, "STAFF_MOVED", AuditService.who(u), "Now works at " + canteen.getName());
         return UserView.of(u);
     }
 
@@ -166,8 +215,8 @@ public class AdminController {
 
     @PostMapping("/menu")
     @ResponseStatus(HttpStatus.CREATED)
-    public MenuItemView createDish(@AuthenticationPrincipal AuthUser me, @Valid @RequestBody MenuItemRequest r) {
-        MenuItemView v = menu.create(r);
+    public MenuItemView createDish(@AuthenticationPrincipal AuthUser me, @RequestParam(required = false) Long canteenId, @Valid @RequestBody MenuItemRequest r) {
+        MenuItemView v = menu.create(canteens.resolve(me, canteenId).getId(), r);
         audit.record(me, "DISH_ADDED", v.name(), AuditService.rupees(v.price()));
         return v;
     }
@@ -191,9 +240,10 @@ public class AdminController {
 
     /** One click to fill an empty menu with a standard canteen menu (dishes already present are skipped). */
     @PostMapping("/menu/import-defaults")
-    public ImportResult importDefaultMenu(@AuthenticationPrincipal AuthUser me) {
-        int[] r = menu.importDefaults();
-        if (r[0] > 0) audit.record(me, "MENU_IMPORTED", "Standard menu", r[0] + " dishes added");
+    public ImportResult importDefaultMenu(@AuthenticationPrincipal AuthUser me, @RequestParam(required = false) Long canteenId) {
+        var canteen = canteens.resolve(me, canteenId);
+        int[] r = menu.importDefaults(canteen.getId());
+        if (r[0] > 0) audit.record(me, "MENU_IMPORTED", "Standard menu", r[0] + " dishes added to " + canteen.getName());
         return new ImportResult(r[0], r[1]);
     }
 
@@ -203,18 +253,18 @@ public class AdminController {
     @Transactional(readOnly = true)
     public List<OrderView> orders(@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
                                   @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-                                  @RequestParam(required = false) OrderStatus status) {
+                                  @RequestParam(required = false) OrderStatus status, @RequestParam(required = false) Long canteenId) {
         LocalDate[] range = range(from, to);
-        return orders.findForReport(range[0], range[1], status).stream().limit(500).map(OrderView::staff).toList();
+        return reports.report(range[0], range[1], status, canteenId).stream().limit(500).map(OrderView::staff).toList();
     }
 
     @GetMapping("/orders.csv")
     public ResponseEntity<byte[]> ordersCsv(@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
                                             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-                                            @RequestParam(required = false) OrderStatus status) {
+                                            @RequestParam(required = false) OrderStatus status, @RequestParam(required = false) Long canteenId) {
         LocalDate[] range = range(from, to);
         // BOM so Excel opens the ₹/Unicode text correctly.
-        byte[] body = ("﻿" + reports.ordersCsv(range[0], range[1], status)).getBytes(StandardCharsets.UTF_8);
+        byte[] body = ("\uFEFF" + reports.ordersCsv(range[0], range[1], status, canteenId)).getBytes(StandardCharsets.UTF_8);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"tulas-orders-" + range[0] + "-to-" + range[1] + ".csv\"")
@@ -282,16 +332,14 @@ public class AdminController {
     // ---- settings
 
     @GetMapping("/settings")
-    public CanteenView getSettings() {
+    public SettingsView getSettings() {
         return settings.view();
     }
 
     @PutMapping("/settings")
-    public CanteenView updateSettings(@AuthenticationPrincipal AuthUser me, @Valid @RequestBody SettingsRequest r) {
-        CanteenView v = settings.update(r);
-        audit.record(me, "SETTINGS_CHANGED", "Canteen settings",
-                "Hours " + r.openTime() + "–" + r.closeTime() + " · cash " + (r.cashAllowed() ? "on" : "off")
-                        + " · UPI " + (v.upiId() == null ? "off" : v.upiId()));
+    public SettingsView updateSettings(@AuthenticationPrincipal AuthUser me, @Valid @RequestBody SettingsRequest r) {
+        SettingsView v = settings.update(r);
+        audit.record(me, "SETTINGS_CHANGED", "Wallet top-ups", "UPI " + (v.upiId() == null ? "off" : v.upiId()));
         return v;
     }
 }

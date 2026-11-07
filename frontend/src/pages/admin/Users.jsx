@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Ban, IndianRupee, KeyRound, LogOut, Search, UserPlus, Users as UsersIcon } from 'lucide-react'
 import { api, dateOf, rupees, timeOf } from '../../api'
-import { Button, Card, Empty, ErrorNote, Input, Modal, PageTitle, Spinner, useToast } from '../../components/ui'
+import { Button, Card, Empty, ErrorNote, Input, Modal, PageTitle, Select, Spinner, useToast } from '../../components/ui'
+import { useCanteens } from '../../context/CanteenContext'
 
 const ROLES = [['', 'Everyone'], ['STUDENT', 'Students'], ['STAFF', 'Kitchen staff'], ['ADMIN', 'Admins']]
 
@@ -16,6 +17,7 @@ export default function UsersPage() {
   const [history, setHistory] = useState(null)
   const [staffOpen, setStaffOpen] = useState(false)
   const [temp, setTemp] = useState(null)
+  const { canteens } = useCanteens()
 
   const load = useCallback(() => {
     const p = new URLSearchParams({ page })
@@ -33,6 +35,16 @@ export default function UsersPage() {
     if (!confirm(`${u.blocked ? 'Unblock' : 'Block'} ${u.name}?${u.blocked ? '' : ' They will be logged out and can\'t order.'}`)) return
     try {
       await api(`/api/admin/users/${u.id}/block`, { method: 'POST', body: { blocked: !u.blocked } })
+      load()
+    } catch (e) {
+      toast(e.message, 'error')
+    }
+  }
+
+  const moveStaff = async (u, canteenId) => {
+    try {
+      await api(`/api/admin/users/${u.id}/canteen`, { method: 'PUT', body: { canteenId: Number(canteenId) } })
+      toast(`${u.name} now works at ${canteens.find((c) => c.id === Number(canteenId))?.name}`, 'good')
       load()
     } catch (e) {
       toast(e.message, 'error')
@@ -102,6 +114,11 @@ export default function UsersPage() {
                     <p className="font-display font-bold">{rupees(u.walletBalance)}</p>
                     <p className="text-xs text-muted">wallet</p>
                   </button>
+                ) : u.role === 'STAFF' && canteens.length > 1 ? (
+                  <select value={u.canteenId ?? ''} aria-label={`Canteen for ${u.name}`} onChange={(e) => moveStaff(u, e.target.value)}
+                    className="mr-auto rounded-lg border border-line bg-card px-2 py-1 text-xs font-semibold text-ink-2 sm:mr-0">
+                    {canteens.map((c) => <option key={c.id} value={c.id}>Kitchen · {c.name}</option>)}
+                  </select>
                 ) : <span className="rounded-full bg-card-2 px-2.5 py-1 text-xs font-semibold text-ink-2">{u.role === 'STAFF' ? 'Kitchen' : 'Admin'}</span>}
                 <div className="flex gap-1.5">
                   {u.role === 'STUDENT' && <Button size="sm" variant="soft" onClick={() => setRecharge(u)}><IndianRupee className="size-4" /> Recharge</Button>}
@@ -206,7 +223,8 @@ function RechargeModal({ user, onClose, onDone }) {
 
 function StaffModal({ open, onClose, onDone }) {
   const toast = useToast()
-  const [f, setF] = useState({ name: '', email: '', password: '', phone: '' })
+  const { canteens, selectedId } = useCanteens()
+  const [f, setF] = useState({ name: '', email: '', password: '', phone: '', canteenId: '' })
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
@@ -216,9 +234,9 @@ function StaffModal({ open, onClose, onDone }) {
     setBusy(true)
     setError(null)
     try {
-      await api('/api/admin/staff', { method: 'POST', body: f })
+      await api('/api/admin/staff', { method: 'POST', body: { ...f, canteenId: Number(f.canteenId || selectedId) || null } })
       toast(`Kitchen login created for ${f.name}`, 'good')
-      setF({ name: '', email: '', password: '', phone: '' })
+      setF({ name: '', email: '', password: '', phone: '', canteenId: '' })
       onDone()
     } catch (err) {
       setError(err.message)
@@ -233,6 +251,11 @@ function StaffModal({ open, onClose, onDone }) {
         <Input label="Name" required maxLength={80} value={f.name} onChange={set('name')} />
         <Input label="Email (used to log in)" type="email" required value={f.email} onChange={set('email')} />
         <Input label="Phone" inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={f.phone} onChange={set('phone')} />
+        {canteens.length > 1 && (
+          <Select label="Works at" value={f.canteenId || selectedId || ''} onChange={set('canteenId')}>
+            {canteens.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+        )}
         <Input label="Temporary password" type="text" required minLength={6} value={f.password} onChange={set('password')}
           hint="Share it with them; they can change it under Account." />
         <ErrorNote>{error}</ErrorNote>

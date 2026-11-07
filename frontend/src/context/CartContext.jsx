@@ -22,7 +22,17 @@ export function CartProvider({ children }) {
       count: list.reduce((s, l) => s + l.qty, 0),
       total: list.reduce((s, l) => s + l.qty * Number(l.item.price), 0),
       qtyOf: (id) => lines[id]?.qty || 0,
-      add: (item) => setLines((c) => ({ ...c, [item.id]: { item, qty: (c[item.id]?.qty || 0) + 1 } })),
+      /** The canteen this cart is for (all lines are from one canteen). */
+      canteenId: list[0]?.item.canteenId ?? null,
+      add: (item) => {
+        // One canteen per order: adding a dish from another canteen starts a new cart (after asking).
+        const other = list.some((l) => l.item.canteenId !== item.canteenId)
+        if (other && !window.confirm('Your cart has dishes from another canteen. Start a new cart for this one?')) return
+        setLines((c) => {
+          const base = other ? {} : c
+          return { ...base, [item.id]: { item, qty: (base[item.id]?.qty || 0) + 1 } }
+        })
+      },
       remove: (id) =>
         setLines((c) => {
           const q = (c[id]?.qty || 0) - 1

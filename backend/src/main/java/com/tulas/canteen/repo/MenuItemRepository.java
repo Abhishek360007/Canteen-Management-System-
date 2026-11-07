@@ -12,6 +12,8 @@ public interface MenuItemRepository extends JpaRepository<MenuItem, Long> {
 
     List<MenuItem> findByArchivedFalseOrderByCategoryAscNameAsc();
 
+    List<MenuItem> findByCanteenIdAndArchivedFalseOrderByCategoryAscNameAsc(Long canteenId);
+
     @Query("select m.stockToday from MenuItem m where m.id = :id")
     Integer stockOf(@Param("id") Long id);
 

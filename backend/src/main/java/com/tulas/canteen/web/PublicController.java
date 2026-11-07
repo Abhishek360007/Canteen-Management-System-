@@ -5,6 +5,7 @@ import com.tulas.canteen.dto.AdminDtos.CanteenView;
 import com.tulas.canteen.dto.MenuDtos.MenuItemView;
 import com.tulas.canteen.repo.AnnouncementRepository;
 import com.tulas.canteen.security.AuthUser;
+import com.tulas.canteen.service.CanteenService;
 import com.tulas.canteen.service.LiveHub;
 import com.tulas.canteen.service.MenuService;
 import com.tulas.canteen.service.SettingsService;
@@ -12,6 +13,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -26,8 +28,11 @@ public class PublicController {
     private final SettingsService settings;
     private final AnnouncementRepository announcements;
     private final LiveHub live;
+    private final CanteenService canteens;
 
-    public PublicController(MenuService menu, SettingsService settings, AnnouncementRepository announcements, LiveHub live) {
+    public PublicController(MenuService menu, SettingsService settings, AnnouncementRepository announcements, LiveHub live,
+                            CanteenService canteens) {
+        this.canteens = canteens;
         this.menu = menu;
         this.settings = settings;
         this.announcements = announcements;
@@ -44,14 +49,21 @@ public class PublicController {
                 "version", commit == null || commit.length() < 7 ? "local" : commit.substring(0, 7));
     }
 
+    /** The menu of one canteen (?canteenId=, default the first; kitchen staff always get their own). */
     @GetMapping("/menu")
-    public List<MenuItemView> menu(@AuthenticationPrincipal AuthUser me) {
-        return menu.list(me);
+    public List<MenuItemView> menu(@AuthenticationPrincipal AuthUser me, @RequestParam(required = false) Long canteenId) {
+        return menu.list(me, canteens.resolve(me, canteenId).getId());
+    }
+
+    /** All canteens students can order from, with live open/closed status. */
+    @GetMapping("/canteens")
+    public List<CanteenView> canteens() {
+        return canteens.list(false);
     }
 
     @GetMapping("/canteen")
-    public CanteenView canteen() {
-        return settings.view();
+    public CanteenView canteen(@AuthenticationPrincipal AuthUser me, @RequestParam(required = false) Long canteenId) {
+        return canteens.view(canteens.resolve(me, canteenId));
     }
 
     @GetMapping("/announcements")

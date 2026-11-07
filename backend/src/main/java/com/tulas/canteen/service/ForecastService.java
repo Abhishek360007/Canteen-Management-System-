@@ -66,8 +66,9 @@ public class ForecastService {
         }
     }
 
-    private History history(LocalDate from, LocalDate to) {
-        List<Order> list = orders.findByOrderDateBetween(from, to).stream().filter(o -> SOLD.contains(o.getStatus())).toList();
+    private History history(Long canteenId, LocalDate from, LocalDate to) {
+        List<Order> list = orders.findByCanteenIdAndOrderDateBetween(canteenId, from, to).stream()
+                .filter(o -> SOLD.contains(o.getStatus())).toList();
         Map<LocalDate, Map<Long, Integer>> byDay = new HashMap<>();
         for (Order o : list) {
             Map<Long, Integer> day = byDay.computeIfAbsent(o.getOrderDate(), k -> new HashMap<>());
@@ -126,11 +127,11 @@ public class ForecastService {
                            List<IngredientNeed> ingredients, String method) {}
 
     @Transactional(readOnly = true)
-    public Forecast forecast(LocalDate target) {
-        History h = history(target.minusDays(HISTORY_DAYS), target.minusDays(1));
+    public Forecast forecast(Long canteenId, LocalDate target) {
+        History h = history(canteenId, target.minusDays(HISTORY_DAYS), target.minusDays(1));
         double errorSpread = residualStd(h, target);
         List<DishForecast> list = new ArrayList<>();
-        for (MenuItem d : menu.findByArchivedFalseOrderByCategoryAscNameAsc()) {
+        for (MenuItem d : menu.findByCanteenIdAndArchivedFalseOrderByCategoryAscNameAsc(canteenId)) {
             Prediction p = predict(h, d.getId(), target);
             int rec = (int) Math.ceil(p.value() * SAFETY);
             double spread = 1.28 * errorSpread * Math.sqrt(Math.max(p.value(), 1)); // ~80% range, wider for bigger dishes
@@ -187,11 +188,12 @@ public class ForecastService {
 
     /** For each of the last 14 open days: what we would have forecast that morning vs what actually sold. */
     @Transactional(readOnly = true)
-    public Accuracy accuracy() {
+    public Accuracy accuracy(Long canteenId) {
         LocalDate today = clock.today();
-        History h = history(today.minusDays(HISTORY_DAYS + 14), today.minusDays(1));
+        History h = history(canteenId, today.minusDays(HISTORY_DAYS + 14), today.minusDays(1));
         List<LocalDate> days = h.openDays().stream().filter(d -> !d.isBefore(today.minusDays(14))).toList();
-        Set<Long> dishes = menu.findAll().stream().map(MenuItem::getId).collect(Collectors.toSet());
+        Set<Long> dishes = menu.findAll().stream().filter(m -> canteenId.equals(m.getCanteenId()))
+                .map(MenuItem::getId).collect(Collectors.toSet());
         List<DayAccuracy> out = new ArrayList<>();
         double absErr = 0, pctErr = 0;
         int pctDays = 0;
@@ -217,9 +219,9 @@ public class ForecastService {
 
     /** Average orders per hour for each weekday over the last 4 weeks. */
     @Transactional(readOnly = true)
-    public Peaks peaks() {
+    public Peaks peaks(Long canteenId) {
         LocalDate today = clock.today();
-        History h = history(today.minusDays(28), today.minusDays(1));
+        History h = history(canteenId, today.minusDays(28), today.minusDays(1));
         List<Integer> hours = new ArrayList<>();
         for (int i = 7; i <= 20; i++) hours.add(i);
         double[][] grid = new double[7][hours.size()];
@@ -253,10 +255,10 @@ public class ForecastService {
 
     /** Last 30 days vs the 30 before; "least" includes dishes that sold nothing. */
     @Transactional(readOnly = true)
-    public Sellers sellers() {
+    public Sellers sellers(Long canteenId) {
         LocalDate today = clock.today();
-        List<Order> now = history(today.minusDays(29), today).raw();
-        List<Order> prev = history(today.minusDays(59), today.minusDays(30)).raw();
+        List<Order> now = history(canteenId, today.minusDays(29), today).raw();
+        List<Order> prev = history(canteenId, today.minusDays(59), today.minusDays(30)).raw();
         Map<Long, Integer> q = new HashMap<>(), pq = new HashMap<>();
         Map<Long, BigDecimal> rev = new HashMap<>();
         now.forEach(o -> o.getItems().forEach(i -> {
@@ -264,7 +266,7 @@ public class ForecastService {
             rev.merge(i.getMenuItemId(), i.getLineTotal(), BigDecimal::add);
         }));
         prev.forEach(o -> o.getItems().forEach(i -> pq.merge(i.getMenuItemId(), i.getQuantity(), Integer::sum)));
-        List<Seller> all = menu.findByArchivedFalseOrderByCategoryAscNameAsc().stream().map(d -> {
+        List<Seller> all = menu.findByCanteenIdAndArchivedFalseOrderByCategoryAscNameAsc(canteenId).stream().map(d -> {
             int a = q.getOrDefault(d.getId(), 0), b = pq.getOrDefault(d.getId(), 0);
             return new Seller(d.getId(), d.getName(), d.getEmoji(), a, rev.getOrDefault(d.getId(), BigDecimal.ZERO), b,
                     b == 0 ? null : (int) Math.round((a - b) * 100.0 / b));

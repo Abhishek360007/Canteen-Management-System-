@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 import { api, rupees } from '../../api'
 import { useLive } from '../../context/LiveContext'
+import { useCanteens } from '../../context/CanteenContext'
 import { BarChart, RankBars } from '../../components/Charts'
 import { Card, ErrorNote, PageTitle, Spinner } from '../../components/ui'
 import { Stat } from '../../components/Stat'
@@ -10,7 +11,9 @@ import { Stat } from '../../components/Stat'
 export default function Dashboard() {
   const [d, setD] = useState(null)
   const [error, setError] = useState(null)
-  const load = useCallback(() => api('/api/admin/dashboard').then(setD).catch((e) => setError(e.message)), [])
+  const { canteens, selected } = useCanteens()
+  const [all, setAll] = useState(true)
+  const load = useCallback(() => api(`/api/admin/dashboard${all || !selected ? '' : `?canteenId=${selected.id}`}`).then(setD).catch((e) => setError(e.message)), [all, selected])
   useEffect(() => { load() }, [load])
   useLive('order', load)
   useLive('topup', load)
@@ -37,7 +40,13 @@ export default function Dashboard() {
 
   return (
     <>
-      <PageTitle title="Dashboard" sub="Today at Tula's Canteen"
+      {canteens.length > 1 && (
+        <div className="mb-3 inline-flex rounded-xl bg-card-2 p-1 text-sm" role="tablist">
+          <button role="tab" aria-selected={all} onClick={() => setAll(true)} className={`rounded-lg px-3 py-1.5 font-semibold ${all ? 'bg-card shadow-sm' : 'text-muted'}`}>All canteens</button>
+          <button role="tab" aria-selected={!all} onClick={() => setAll(false)} className={`rounded-lg px-3 py-1.5 font-semibold ${!all ? 'bg-card shadow-sm' : 'text-muted'}`}>{selected?.name || 'This canteen'}</button>
+        </div>
+      )}
+      <PageTitle title="Dashboard" sub={all || canteens.length < 2 ? 'Today across all canteens' : `Today at ${selected?.name}`}
         right={<Link to="/admin/insights" className="flex items-center gap-1 rounded-xl border border-line bg-card px-3 py-2 text-sm font-semibold hover:bg-card-2">Forecast & insights <ChevronRight className="size-4" /></Link>} />
       {d.pendingTopups > 0 && (
         <Link to="/admin/topups" className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-warn-soft p-3.5 text-sm font-medium text-warn">

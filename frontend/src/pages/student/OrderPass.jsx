@@ -87,6 +87,7 @@ export default function OrderPass() {
         <div className={`px-5 py-4 text-center ${order.status === 'READY' ? 'bg-good text-white dark:text-black' : 'bg-brand text-white'}`}>
           <p className="text-xs font-semibold uppercase tracking-widest opacity-85">Pickup pass</p>
           <p className="font-display text-5xl font-extrabold tracking-tight">{order.code}</p>
+          {order.canteenName && <p className="text-sm font-semibold opacity-95">Collect at {order.canteenName}{order.canteenLocation ? ` · ${order.canteenLocation}` : ''}</p>}
           <p className="mt-1 text-sm opacity-90">
             {order.status === 'READY' ? 'Ready now — show this at the counter'
               : active ? (order.pickupSlot ? `Pickup at ${slotLabel(order.pickupSlot.slice(0, 5))}` : `About ${order.etaMinutes} min · ${order.ahead} ahead of you`)

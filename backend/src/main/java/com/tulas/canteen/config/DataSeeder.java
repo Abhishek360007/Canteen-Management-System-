@@ -19,6 +19,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.security.SecureRandom;
 
 /**
@@ -38,6 +39,7 @@ public class DataSeeder implements ApplicationRunner {
     private final WalletService wallet;
     private final SettingsService settings;
     private final com.tulas.canteen.service.MenuService menuService;
+    @org.springframework.beans.factory.annotation.Autowired private com.tulas.canteen.service.CanteenService canteens;
 
     @Value("${app.admin.email}") private String adminEmail;
     @Value("${app.admin.password}") private String adminPassword;
@@ -82,19 +84,30 @@ public class DataSeeder implements ApplicationRunner {
         }
         if (!seedDemo || menu.count() > 0) return;
 
-        auth.createUser("Kitchen Counter", "kitchen@tulas.local", "kitchen123", null, Role.STAFF);
+        var main = canteens.defaultCanteen();
+        auth.createUser("Kitchen Counter", "kitchen@tulas.local", "kitchen123", null, Role.STAFF).setCanteenId(main.getId());
         User student = auth.createUser("Demo Student", "student@tulas.local", "student123", "9876543210", Role.STUDENT);
         student.setRollNo("TU-CSE-001");
         wallet.recharge(student.getId(), new BigDecimal("500.00"), "Welcome balance", "system");
 
-        DefaultMenu.DISHES.forEach(menuService::addDefaultDish);
-        if (demoHistory) DemoHistory.generate(orders, menu, auth, java.time.ZoneId.of(zone));
+        DefaultMenu.DISHES.forEach(d -> menuService.addDefaultDish(d, main.getId()));
+
+        // A second outlet with its own short menu and kitchen login, to show multi-canteen.
+        var court = canteens.create(new com.tulas.canteen.dto.AdminDtos.CanteenRequest("Food Court", "F",
+                "Near the library", java.time.LocalTime.of(10, 0), java.time.LocalTime.of(20, 0), 3, 6, 45, true, true));
+        auth.createUser("Food Court Counter", "foodcourt@tulas.local", "kitchen123", null, Role.STAFF).setCanteenId(court.id());
+        for (String name : List.of("Veg Momos (6 pcs)", "Veg Burger", "French Fries", "Paneer Roll", "Masala Maggi",
+                "Cold Coffee", "Mango Lassi", "Fresh Lime Soda", "Ice Cream Cup")) {
+            DefaultMenu.DISHES.stream().filter(d -> d.name().equals(name)).findFirst()
+                    .ifPresent(d -> menuService.addDefaultDish(d, court.id()));
+        }
+        if (demoHistory) DemoHistory.generate(orders, menu, auth, java.time.ZoneId.of(zone), main);
 
         Announcement a = new Announcement();
         a.setMessage("Welcome to Tula's Canteen! Order ahead, skip the queue, and collect with your pickup code.");
         announcements.save(a);
 
-        log.info("Demo data added: student@tulas.local / student123, kitchen@tulas.local / kitchen123");
+        log.info("Demo data added: student@tulas.local / student123, kitchen@tulas.local / kitchen123, foodcourt@tulas.local / kitchen123");
     }
 
     private static String randomPassword() {

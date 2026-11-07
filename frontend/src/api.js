@@ -19,8 +19,19 @@ export class ApiError extends Error {
   }
 }
 
+// The canteen the user is looking at; added as ?canteenId= to per-canteen endpoints (menu, kitchen, insights…).
+let canteenScope = null
+export const setCanteenScope = (id) => { canteenScope = id }
+const SCOPED = /^\/api\/(menu|canteen(\?|$)|recommendations(\?|$)|kitchen\/|admin\/insights|admin\/menu(\?|$|\/import))/
+
+function scoped(path) {
+  if (!canteenScope || !SCOPED.test(path) || /[?&]canteenId=/.test(path)) return path
+  return path + (path.includes('?') ? '&' : '?') + 'canteenId=' + canteenScope
+}
+
 /** fetch wrapper: adds the token, parses JSON, turns error bodies into ApiError with a readable message. */
 export async function api(path, { method = 'GET', body, headers = {}, raw = false } = {}) {
+  path = scoped(path)
   const token = tokenStore.get()
   let res
   try {

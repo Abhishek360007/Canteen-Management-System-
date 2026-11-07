@@ -3,7 +3,6 @@ package com.tulas.canteen;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tulas.canteen.domain.CanteenSettings;
-import com.tulas.canteen.repo.DailyCounterRepository;
 import com.tulas.canteen.repo.SettingsRepository;
 import com.tulas.canteen.service.CounterService;
 import com.tulas.canteen.service.DefaultMenu;
@@ -43,20 +42,82 @@ class OrderFlowTest {
     @Autowired ObjectMapper json;
     @Autowired SettingsRepository settingsRepo;
     @Autowired CounterService counterService;
-    @Autowired DailyCounterRepository counterRepo;
+    @Autowired com.tulas.canteen.repo.OrderCounterRepository counterRepo;
     @Autowired com.tulas.canteen.service.RecommendationService recommender;
     @Autowired com.tulas.canteen.repo.UserRepository userRepo;
     @Autowired com.tulas.canteen.repo.MenuItemRepository menuRepo;
     @Autowired com.tulas.canteen.repo.OrderRepository orderRepo;
 
+    @Autowired com.tulas.canteen.repo.CanteenRepository canteenRepo;
+
     @BeforeEach
     void openAllDay() {
-        // Tests can run at any hour, so stretch opening hours over the whole day.
+        // Tests can run at any hour, so stretch every canteen's hours over the whole day.
+        for (var c : canteenRepo.findAll()) {
+            c.setOpenTime(LocalTime.MIN);
+            c.setCloseTime(LocalTime.of(23, 59, 59));
+            c.setStatus(com.tulas.canteen.domain.CanteenStatus.OPEN);
+            canteenRepo.save(c);
+        }
         CanteenSettings s = settingsRepo.findById(CanteenSettings.SINGLETON_ID).orElseThrow();
-        s.setOpenTime(LocalTime.MIN);
-        s.setCloseTime(LocalTime.of(23, 59, 59));
         s.setUpiId("tulascanteen@okaxis");
         settingsRepo.save(s);
+    }
+
+    /** Two canteens: students choose one, orders get its prefix, and each kitchen only sees and serves its own. */
+    @Test
+    void eachCanteenHasItsOwnMenuOrdersAndKitchen() throws Exception {
+        String student = register("multi" + UUID.randomUUID() + "@college.edu");
+        String admin = login("admin@tulas.local", "Admin@123");
+        String mainKitchen = login("kitchen@tulas.local", "kitchen123");
+        String courtKitchen = login("foodcourt@tulas.local", "kitchen123");
+
+        JsonNode list = call(get("/api/canteens"), student, 200);
+        assertThat(list.size()).isEqualTo(2);
+        long mainId = list.get(0).get("id").asLong(), courtId = list.get(1).get("id").asLong();
+        assertThat(list.get(1).get("name").asText()).isEqualTo("Food Court");
+
+        JsonNode courtMenu = call(get("/api/menu?canteenId=" + courtId), student, 200);
+        assertThat(courtMenu.toString()).contains("Veg Burger").doesNotContain("Masala Dosa");
+        long burger = idOf(courtMenu, "Veg Burger");
+        long dosa = idOf(call(get("/api/menu?canteenId=" + mainId), student, 200), "Masala Dosa");
+
+        // One canteen per order.
+        String mixed = "{\"items\":[{\"menuItemId\":" + burger + ",\"quantity\":1},{\"menuItemId\":" + dosa
+                + ",\"quantity\":1}],\"paymentMethod\":\"CASH\"}";
+        assertThat(call(post("/api/orders").content(mixed), student, 400).get("message").asText()).contains("different canteens");
+
+        JsonNode order = call(post("/api/orders").content(orderJson(burger, 1, "CASH", 0)), student, 201);
+        assertThat(order.get("code").asText()).matches("F-\\d{3}");
+        assertThat(order.get("canteenName").asText()).isEqualTo("Food Court");
+        long id = order.get("id").asLong();
+
+        // Only the Food Court kitchen sees it; staff stay pinned to their own canteen even if they ask for another.
+        assertThat(call(get("/api/kitchen/queue"), courtKitchen, 200).toString()).contains(order.get("code").asText());
+        assertThat(call(get("/api/kitchen/queue"), mainKitchen, 200).toString()).doesNotContain(order.get("code").asText());
+        assertThat(call(get("/api/kitchen/queue?canteenId=" + courtId), mainKitchen, 200).toString()).doesNotContain(order.get("code").asText());
+
+        // The main kitchen can't change or hand over another canteen's order.
+        call(post("/api/kitchen/orders/" + id + "/status").content("{\"status\":\"READY\"}"), mainKitchen, 403);
+        call(put("/api/kitchen/menu/" + burger + "/stock").content("{\"stockToday\":5,\"available\":true}"), mainKitchen, 403);
+        String verify = "{\"code\":\"" + order.get("code").asText() + "\",\"otp\":\"" + order.get("otp").asText() + "\"}";
+        assertThat(call(post("/api/kitchen/verify").content(verify), mainKitchen, 409).get("message").asText()).contains("Food Court");
+
+        call(post("/api/kitchen/orders/" + id + "/status").content("{\"status\":\"READY\"}"), courtKitchen, 200);
+        call(post("/api/kitchen/verify").content(verify), courtKitchen, 200);
+
+        // Admin: comparison, filtering, new canteen, duplicate code.
+        JsonNode compare = call(get("/api/admin/canteens/compare"), admin, 200);
+        assertThat(compare.size()).isEqualTo(2);
+        assertThat(compare.get(1).get("ordersToday").asLong()).isGreaterThanOrEqualTo(1);
+        assertThat(call(get("/api/admin/orders?canteenId=" + courtId), admin, 200).toString()).contains(order.get("code").asText());
+        assertThat(call(get("/api/admin/orders?canteenId=" + mainId), admin, 200).toString()).doesNotContain(order.get("code").asText());
+        String canteen = "{\"name\":\"Hostel Mess\",\"code\":\"%s\",\"location\":\"Hostel B\",\"openTime\":\"07:00\","
+                + "\"closeTime\":\"22:00\",\"maxActiveOrders\":3,\"maxQtyPerItem\":6,\"noShowMinutes\":45,\"cashAllowed\":true,\"active\":false}";
+        call(post("/api/admin/canteens").content(String.format(canteen, "F")), admin, 409);
+        call(post("/api/admin/canteens").content(String.format(canteen, "H" + (char) ('A' + new Random().nextInt(26)))), admin, 201);
+        assertThat(call(get("/api/canteens"), student, 200).size()).isEqualTo(2); // inactive canteens are hidden from students
+        call(get("/api/admin/canteens"), mainKitchen, 403);
     }
 
     @Test
@@ -173,7 +234,7 @@ class OrderFlowTest {
             jobs.add(pool.submit(() -> {
                 start.await();
                 try {
-                    counterService.createIfMissing(day);
+                    counterService.createIfMissing(day, 1L, "T");
                 } catch (DataIntegrityViolationException expectedForLosers) {
                     // fine: OrderService ignores this
                 }
@@ -183,7 +244,7 @@ class OrderFlowTest {
         start.countDown();
         for (Future<?> f : jobs) f.get(30, TimeUnit.SECONDS); // any other exception fails the test
         pool.shutdown();
-        assertThat(counterRepo.existsById(day)).isTrue();
+        assertThat(counterRepo.existsById(com.tulas.canteen.domain.OrderCounter.key(day, 1L))).isTrue();
     }
 
     /** Every admin list page, with and without its optional filters (empty filters broke on PostgreSQL). */
@@ -368,6 +429,7 @@ class OrderFlowTest {
             int plates = day.getDayOfWeek() == target.getDayOfWeek() ? 20 : 6;
             var o = new com.tulas.canteen.domain.Order();
             o.setUser(user);
+            o.setCanteen(canteenRepo.findById(rajma.getCanteenId()).orElseThrow());
             o.setCode("H-" + (900 + back));
             o.setOrderDate(day);
             o.setPaymentMethod(com.tulas.canteen.domain.PaymentMethod.CASH);
@@ -463,6 +525,31 @@ class OrderFlowTest {
         call(post("/api/push/subscribe").content("{\"endpoint\":\"https://fcm.googleapis.com/fcm/send/abc" + UUID.randomUUID() + "\"," + keys + "}"), student, 204);
         assertThat(call(get("/api/push/key"), student, 200).get("devices").asInt()).isEqualTo(1);
         call(post("/api/push/test"), student, 204);
+    }
+
+    /** After an upgrade, today's numbering continues after orders that already exist (no duplicate T-001). */
+    @Test
+    void newOrderCounterStartsAfterExistingNumbers() throws Exception {
+        String student = register("counter" + UUID.randomUUID() + "@college.edu");
+        var user = userRepo.findById(call(get("/api/auth/me"), student, 200).get("id").asLong()).orElseThrow();
+        var main = canteenRepo.findAllByOrderBySortOrderAscIdAsc().get(0);
+        var chai = menuRepo.findAll().stream().filter(m -> m.getName().equals("Masala Chai") && main.getId().equals(m.getCanteenId())).findFirst().orElseThrow();
+        LocalDate day = LocalDate.of(2098, 3, 3);
+        for (String code : List.of("T-002", "T-007")) {
+            var o = new com.tulas.canteen.domain.Order();
+            o.setUser(user);
+            o.setCanteen(main);
+            o.setCode(code);
+            o.setOrderDate(day);
+            o.setPaymentMethod(com.tulas.canteen.domain.PaymentMethod.CASH);
+            o.setTotal(chai.getPrice());
+            o.setOtp("0000");
+            o.addItem(new com.tulas.canteen.domain.OrderItem(chai, 1));
+            orderRepo.save(o);
+        }
+        counterService.createIfMissing(day, main.getId(), main.getCode());
+        var counter = counterRepo.findById(com.tulas.canteen.domain.OrderCounter.key(day, main.getId())).orElseThrow();
+        assertThat(counter.next()).isEqualTo(8);
     }
 
     @Test

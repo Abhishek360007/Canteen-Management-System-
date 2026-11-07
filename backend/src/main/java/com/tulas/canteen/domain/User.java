@@ -43,6 +43,13 @@ public class User {
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal walletBalance = BigDecimal.ZERO;
 
+    /** Kitchen staff work at one canteen. Null for students and admins. */
+    @Column(name = "canteen_id")
+    private Long canteenId;
+
+    public Long getCanteenId() { return canteenId; }
+    public void setCanteenId(Long canteenId) { this.canteenId = canteenId; }
+
     @Column(nullable = false)
     private boolean blocked = false;
 

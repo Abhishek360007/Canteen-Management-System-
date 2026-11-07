@@ -4,6 +4,7 @@ import { Heart, Minus, Plus, Search, ShoppingBag, Star, ArrowRight, Clock } from
 import { api, rupees } from '../../api'
 import { useAuth } from '../../context/AuthContext'
 import { useCart } from '../../context/CartContext'
+import { useCanteens } from '../../context/CanteenContext'
 import { useLive } from '../../context/LiveContext'
 import { DishArt } from '../../components/Brand'
 import { RecStrip } from '../../components/Recs'
@@ -22,6 +23,7 @@ const greeting = () => {
 export default function Menu() {
   const { user } = useAuth()
   const { canteen } = useOutletContext()
+  const { canteens, selectedId, select } = useCanteens()
   const cart = useCart()
   const toast = useToast()
   const [menu, setMenu] = useState(null)
@@ -83,6 +85,25 @@ export default function Menu() {
         <p className="text-sm text-muted">{greeting()}, {user.name.split(' ')[0]} 👋</p>
         <h1 className="text-2xl font-bold tracking-tight">What are you eating today?</h1>
       </div>
+
+      {canteens.length > 1 && (
+        <div className="no-scrollbar -mx-4 mb-4 flex gap-2 overflow-x-auto px-4" role="radiogroup" aria-label="Choose a canteen">
+          {canteens.map((c) => {
+            const on = c.id === selectedId
+            const st = !c.openNow ? ['Closed', 'bg-bad'] : c.status === 'BUSY' ? ['Busy', 'bg-warn'] : ['Open', 'bg-good']
+            return (
+              <button key={c.id} role="radio" aria-checked={on} onClick={() => select(c.id)}
+                className={`min-w-44 shrink-0 rounded-2xl border-2 p-3 text-left transition ${on ? 'border-brand bg-brand-soft' : 'border-line bg-card'}`}>
+                <span className="flex items-center justify-between gap-2">
+                  <span className="font-display font-bold">{c.name}</span>
+                  <span className="flex items-center gap-1 text-xs font-semibold text-ink-2"><span className={`size-1.5 rounded-full ${st[1]}`} />{st[0]}</span>
+                </span>
+                <span className="mt-0.5 block text-xs text-muted">{c.location || `${c.openTime.slice(0, 5)}–${c.closeTime.slice(0, 5)}`}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {closed && (
         <div className="mb-4 flex items-start gap-3 rounded-2xl bg-bad-soft p-3 text-sm text-bad">

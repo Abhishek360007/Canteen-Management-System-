@@ -36,9 +36,9 @@ public class ReportService {
     }
 
     @Transactional(readOnly = true)
-    public Dashboard dashboard() {
+    public Dashboard dashboard(Long canteenId) {
         LocalDate today = clock.today();
-        List<Order> week = orders.findByOrderDateBetween(today.minusDays(6), today);
+        List<Order> week = between(canteenId, today.minusDays(6), today);
         List<Order> todays = week.stream().filter(o -> o.getOrderDate().equals(today)).toList();
 
         List<DayPoint> days = new ArrayList<>();
@@ -75,8 +75,8 @@ public class ReportService {
 
     /** End-of-day sheet for the counter: what was sold and how much cash should be in the drawer. */
     @Transactional(readOnly = true)
-    public DaySummary daySummary(LocalDate day) {
-        List<Order> list = orders.findByOrderDateBetween(day, day);
+    public DaySummary daySummary(LocalDate day, Long canteenId) {
+        List<Order> list = between(canteenId, day, day);
         List<Order> sold = list.stream().filter(o -> SOLD.contains(o.getStatus())).toList();
         BigDecimal wallet = sum(sold.stream().filter(o -> o.getPaymentMethod() == PaymentMethod.WALLET).toList());
         BigDecimal cashCollected = sum(list.stream()
@@ -99,20 +99,51 @@ public class ReportService {
     }
 
     @Transactional(readOnly = true)
-    public String ordersCsv(LocalDate from, LocalDate to, OrderStatus status) {
+    public String ordersCsv(LocalDate from, LocalDate to, OrderStatus status, Long canteenId) {
         DateTimeFormatter ts = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-        StringBuilder sb = new StringBuilder("Order,Date,Time,Student,Roll No,Items,Payment,Total,Status\n");
-        for (Order o : orders.findForReport(from, to, status)) {
+        StringBuilder sb = new StringBuilder("Order,Canteen,Date,Time,Student,Roll No,Items,Payment,Total,Status\n");
+        for (Order o : report(from, to, status, canteenId)) {
             String items = o.getItems().stream().map(i -> i.getQuantity() + "x " + i.getName())
                     .collect(Collectors.joining("; "));
             sb.append(String.join(",",
-                    csv(o.getCode()), csv(o.getOrderDate().toString()),
+                    csv(o.getCode()), csv(o.getCanteen() == null ? "" : o.getCanteen().getName()), csv(o.getOrderDate().toString()),
                     csv(LocalDateTime.ofInstant(o.getCreatedAt(), clock.zone()).format(ts).substring(11)),
                     csv(o.getUser().getName()), csv(o.getUser().getRollNo()), csv(items),
                     csv(o.getPaymentMethod().name()), o.getTotal().toPlainString(), csv(o.getStatus().name())))
               .append('\n');
         }
         return sb.toString();
+    }
+
+    /** Orders between two dates, for one canteen or (canteenId null) all of them. */
+    public List<Order> between(Long canteenId, LocalDate from, LocalDate to) {
+        return canteenId == null ? orders.findByOrderDateBetween(from, to) : orders.findByCanteenIdAndOrderDateBetween(canteenId, from, to);
+    }
+
+    /** Report rows with optional status and canteen filters (no nullable query parameters: PostgreSQL can't type them). */
+    public List<Order> report(LocalDate from, LocalDate to, OrderStatus status, Long canteenId) {
+        List<OrderStatus> statuses = status == null ? List.of(OrderStatus.values()) : List.of(status);
+        return canteenId == null ? orders.findForReport(from, to, statuses) : orders.findForReport(from, to, statuses, List.of(canteenId));
+    }
+
+    /** Side-by-side numbers for every canteen: today, last 30 days, average order, rating, no-shows, top dish. */
+    @Transactional(readOnly = true)
+    public List<CanteenStats> compare(List<com.tulas.canteen.domain.Canteen> canteens) {
+        LocalDate today = clock.today();
+        List<Order> month = orders.findByOrderDateBetween(today.minusDays(29), today);
+        List<CanteenStats> out = new ArrayList<>();
+        for (var c : canteens) {
+            List<Order> mine = month.stream().filter(o -> o.getCanteen() != null && o.getCanteen().getId().equals(c.getId())).toList();
+            List<Order> sold = mine.stream().filter(o -> SOLD.contains(o.getStatus())).toList();
+            List<Order> soldToday = sold.stream().filter(o -> o.getOrderDate().equals(today)).toList();
+            BigDecimal revenue = sum(sold);
+            BigDecimal avg = sold.isEmpty() ? BigDecimal.ZERO : revenue.divide(BigDecimal.valueOf(sold.size()), 0, java.math.RoundingMode.HALF_UP);
+            double rating = mine.stream().map(Order::getRating).filter(Objects::nonNull).mapToInt(Integer::intValue).average().orElse(0);
+            List<NamedCount> top = topItems(sold, 1);
+            out.add(new CanteenStats(c.getId(), c.getName(), c.getCode(), soldToday.size(), sum(soldToday), sold.size(), revenue,
+                    avg, Math.round(rating * 10) / 10.0, count(mine, OrderStatus.NO_SHOW), top.isEmpty() ? null : top.get(0).name()));
+        }
+        return out;
     }
 
     private static List<NamedCount> topItems(List<Order> list, int limit) {

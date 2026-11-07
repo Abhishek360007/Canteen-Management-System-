@@ -45,6 +45,7 @@ export default function Orders() {
                   <div className="min-w-0 flex-1">
                     <StatusBadge status={o.status} />
                     <p className="mt-1 truncate text-sm text-ink-2">{o.items.map((i) => `${i.quantity}× ${i.name}`).join(', ')}</p>
+                    {o.canteenName && <p className="truncate text-xs font-medium text-ink-2">at {o.canteenName}</p>}
                     <p className="text-xs text-muted">
                       {o.status === 'READY' ? 'Ready! Show your code at the counter.' : `About ${o.etaMinutes} min · ${o.ahead} order(s) ahead`}
                     </p>

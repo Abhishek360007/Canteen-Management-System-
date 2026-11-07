@@ -4,6 +4,7 @@ import { Banknote, Gift, Minus, Plus, ShoppingBag, Trash2, Wallet } from 'lucide
 import { RecRows } from '../../components/Recs'
 import { api, newKey, rupees } from '../../api'
 import { useCart } from '../../context/CartContext'
+import { useCanteens } from '../../context/CanteenContext'
 import { useLive } from '../../context/LiveContext'
 import { DishArt } from '../../components/Brand'
 import { Button, Card, Empty, ErrorNote, PageTitle, Select, Toggle, VegDot } from '../../components/ui'
@@ -34,6 +35,8 @@ const label = (hhmm) => {
 export default function Cart() {
   const cart = useCart()
   const nav = useNavigate()
+  const { canteens } = useCanteens()
+  const pickup = canteens.find((c) => c.id === cart.canteenId)
   const { canteen } = useOutletContext()
   const [balance, setBalance] = useState(null)
   const [pay, setPay] = useState('WALLET')
@@ -117,7 +120,7 @@ export default function Cart() {
 
   return (
     <>
-      <PageTitle title="Your cart" sub={`${cart.count} item${cart.count > 1 ? 's' : ''}`} />
+      <PageTitle title="Your cart" sub={`${cart.count} item${cart.count > 1 ? 's' : ''}${pickup ? ` · pickup at ${pickup.name}${pickup.location ? ', ' + pickup.location : ''}` : ''}`} />
 
       <Card className="divide-y divide-line">
         {cart.lines.map(({ item, qty }) => (

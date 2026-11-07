@@ -14,6 +14,10 @@ public class MenuItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** Which canteen sells this dish (nullable only so the column can be added to an existing database). */
+    @Column(name = "canteen_id")
+    private Long canteenId;
+
     @Column(nullable = false, length = 80)
     private String name;
 
@@ -61,6 +65,8 @@ public class MenuItem {
     private int ratingCount = 0;
 
     public Long getId() { return id; }
+    public Long getCanteenId() { return canteenId; }
+    public void setCanteenId(Long canteenId) { this.canteenId = canteenId; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public String getDescription() { return description; }

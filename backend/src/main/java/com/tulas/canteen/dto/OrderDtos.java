@@ -49,7 +49,8 @@ public final class OrderDtos {
                             String cancelReason, Instant createdAt, Instant readyAt, Instant closedAt,
                             String customerName, String customerRollNo, List<LineView> items,
                             Long ahead, Integer etaMinutes,
-                            BigDecimal subtotal, BigDecimal discount, int pointsRedeemed, int pointsEarned) {
+                            BigDecimal subtotal, BigDecimal discount, int pointsRedeemed, int pointsEarned,
+                            Long canteenId, String canteenName, String canteenLocation) {
 
         public static OrderView of(Order o, boolean showOtp, Long ahead, Integer eta) {
             return new OrderView(o.getId(), o.getCode(), o.getOrderDate(), o.getStatus(), o.getPaymentMethod(),
@@ -57,7 +58,10 @@ public final class OrderDtos {
                     o.getCancelReason(), o.getCreatedAt(), o.getReadyAt(), o.getClosedAt(),
                     o.getUser().getName(), o.getUser().getRollNo(),
                     o.getItems().stream().map(LineView::of).toList(), ahead, eta,
-                    o.getTotal().add(o.getDiscount()), o.getDiscount(), o.getPointsRedeemed(), o.getPointsEarned());
+                    o.getTotal().add(o.getDiscount()), o.getDiscount(), o.getPointsRedeemed(), o.getPointsEarned(),
+                    o.getCanteen() == null ? null : o.getCanteen().getId(),
+                    o.getCanteen() == null ? null : o.getCanteen().getName(),
+                    o.getCanteen() == null ? null : o.getCanteen().getLocation());
         }
 
         public static OrderView staff(Order o) {

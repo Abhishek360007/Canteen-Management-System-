@@ -32,6 +32,14 @@ by checking the student's order number and 4-digit pickup code (or scanning thei
 
 ## Features
 
+### Multiple canteens
+- Any number of canteens on one campus (e.g. main canteen, food court, hostel mess), each with its **own menu,
+  stock, kitchen staff, opening hours, rules and order numbers** (`T-017` at the main canteen, `F-017` at the food court)
+- Students choose where to order, and that is their **pickup location**; one cart and one order per canteen
+- Kitchen staff only see and serve their own canteen's orders and stock (enforced by the server)
+- Admins switch canteens from the header, add new ones, and **compare** sales, order value, ratings and top dishes
+- Wallet, rewards and UPI top-ups are campus-wide: one wallet works everywhere
+
 ### Students
 - Sign up and log in (JWT); edit profile and change password
 - Today's menu by category, with search, a veg-only filter, favourites, ratings and "only N left" stock badges
@@ -44,6 +52,12 @@ by checking the student's order number and 4-digit pickup code (or scanning thei
 - Wallet page with balance, full transaction history and monthly spending
 - **Add money with UPI**: pay the canteen's UPI ID from any UPI app (one tap on phones, QR on laptops), then
   send the UPI reference; it's added to the wallet once an admin confirms the payment
+- **Smart recommendations**: "Recommended for you", "Order again", "Trending this week", add-ons in the cart
+  ("60% of people who order Masala Dosa add Filter Coffee") and alternatives when a dish is sold out
+- **Rewards**: 1 point per ₹10 on every collected order, Silver and Gold tiers (1.25× / 1.5×), use points at
+  checkout (10 points = ₹5, up to half the order), a birthday bonus, and 50 points each for inviting a friend
+- **Notifications**: a bell with every update, plus **phone alerts** (browser push) when food is ready, an order is
+  cancelled and refunded, a payment or top-up goes through, or points are earned, even with the site closed
 
 ### Kitchen staff
 - **Live order board** (New / Cooking / Ready) that updates instantly, with a chime for new orders
@@ -53,6 +67,8 @@ by checking the student's order number and 4-digit pickup code (or scanning thei
 - **Stock control**: plates left per dish, on/off for today, unlimited dishes
 - Canteen switch: **Open / Busy / Closed**
 - **Day summary**: cash collected, cash still to collect, wallet sales, items sold
+- **Plan for the coming days**: how many plates of each dish to prepare, and the ingredients needed
+- Phone alerts when a dish is **running low or sold out**
 
 ### Admin
 - **Dashboard**: today's sales, orders in progress, 7-day sales chart, busiest hours, top dishes, average rating, money held in wallets
@@ -64,7 +80,13 @@ by checking the student's order number and 4-digit pickup code (or scanning thei
 - **Activity log**: who recharged, approved, refunded, blocked, reset a password or changed the menu, and when
 - All orders with date and status filters, plus **CSV export** for Excel
 - Announcements shown at the top of every student's screen
-- Settings: opening hours, max orders in progress per student, max plates of one dish, no-show hold time, cash on/off
+- Canteens: opening hours, max orders in progress per student, max plates of one dish, no-show hold time, cash on/off
+- **Forecast & insights**:
+  - **Demand forecast** per dish for any of the next 7 days, with a likely range and a recommended number of plates
+  - **Ingredient forecast** from per-plate recipes (e.g. 17 plates of Rajma Chawal → 1.19 kg rajma)
+  - **Accuracy check**: what the forecast would have said on each of the last 14 days vs what actually sold
+  - **Peak hours** heatmap by weekday and hour, and **best and least sellers** with month-on-month change
+  - One click to use the forecast as tomorrow's daily plates
 
 ### Under the hood
 - **Safe ordering under a lunch rush.** Placing an order is one database transaction: check the rules, reserve
@@ -83,7 +105,21 @@ by checking the student's order number and 4-digit pickup code (or scanning thei
 - **Holds up under a rush**: each order uses a single database connection, so a burst of simultaneous orders
   can't exhaust the small connection pool of a free hosted database (covered by a concurrency test).
 - UPI top-ups can't be approved twice, and the same UPI reference can't be claimed twice.
-- Tests run on both H2 and a real PostgreSQL server.
+- **How the "smart" parts work** (no black box, every result comes with a reason):
+  - Recommendations use **basket analysis** over the last 60 days of orders: for every pair of dishes, *confidence*
+    (how often B is bought when A is) and *lift* (whether that's more than chance), combined with each student's own
+    recent orders, favourite categories, veg preference, what's trending and the time of day.
+  - Forecasts blend the **same weekday over the last 4 weeks** (weighted 40/30/20/10%) with a **7-day weighted
+    trend**, ignore days the canteen was closed, and add a 10% safety margin. They're checked against reality by
+    replaying past days using only the data available at the time.
+- **Browser push** follows the Web Push standards (RFC 8291 encryption, RFC 8292 VAPID keys stored in the database)
+  and only talks to official push services (Google, Mozilla, Apple, Microsoft), so it can't be abused to reach other
+  servers. Tested end to end: Chrome subscribed through Google's push service and Google accepted the message.
+- **Upgrade-safe**: moving from the single-canteen version puts existing dishes, orders and staff into the main
+  canteen automatically, and order numbering continues where it left off.
+- **No lost updates**: saving an unrelated change (like blocking a user) never overwrites a wallet balance, points
+  total or plates-left that changed at the same moment.
+- Tests (46) run on both H2 and a real PostgreSQL server, including concurrency, forecasting and multi-canteen.
 - Swagger API docs, an integration test for the whole order flow, light and dark mode, and a mobile-first layout.
 
 ## Tech stack
@@ -91,8 +127,9 @@ by checking the student's order number and 4-digit pickup code (or scanning thei
 | Layer | Technology |
 |---|---|
 | Backend | Java 21, Spring Boot 3.5, Spring Security (JWT), Spring Data JPA (Hibernate), Bean Validation, springdoc OpenAPI |
-| Database | MySQL 8 (production), H2 (zero-setup local runs and tests) |
-| Frontend | React 19, Vite, Tailwind CSS 4, React Router, Lucide icons, `qrcode` |
+| Database | PostgreSQL (Neon, production), MySQL 8, H2 (zero-setup local runs and tests) |
+| Frontend | React 19, Vite, Tailwind CSS 4, React Router, Lucide icons, `qrcode`, service worker for push |
+| Notifications | Server-Sent Events (live screens), Web Push via `web-push` + Bouncy Castle |
 | Deployment | Docker (one image with frontend and backend) and Docker Compose with MySQL |
 
 ## Run it locally
@@ -110,12 +147,14 @@ npm install
 npm run dev
 ```
 
-`mvn spring-boot:run` starts in **demo mode**, which adds a sample menu and these logins:
+`mvn spring-boot:run` starts in **demo mode**, which adds two canteens with menus, four weeks of sample sales
+(so forecasts and insights have data) and these logins:
 
 | Role | Email | Password |
 |---|---|---|
 | Student (₹500 in wallet) | `student@tulas.local` | `student123` |
-| Kitchen | `kitchen@tulas.local` | `kitchen123` |
+| Kitchen (main canteen) | `kitchen@tulas.local` | `kitchen123` |
+| Kitchen (Food Court) | `foodcourt@tulas.local` | `kitchen123` |
 | Admin | `admin@tulas.local` | `Admin@123` |
 
 To try it on a phone, connect to the same Wi-Fi and open `http://<your-PC-IP>:5173`.

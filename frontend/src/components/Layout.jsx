@@ -9,7 +9,9 @@ import { useAuth } from '../context/AuthContext'
 import { useCart } from '../context/CartContext'
 import { useLive, useLiveStatus } from '../context/LiveContext'
 import { useTheme } from '../context/ThemeContext'
+import { useCanteens } from '../context/CanteenContext'
 import { Brand } from './Brand'
+import { Spinner } from './ui'
 
 const NAV = {
   STUDENT: [
@@ -36,8 +38,10 @@ const NAV = {
 }
 
 export function useCanteen() {
+  const { selectedId } = useCanteens()
   const [canteen, setCanteen] = useState(null)
-  const load = useCallback(() => api('/api/canteen').then(setCanteen).catch(() => {}), [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const load = useCallback(() => api('/api/canteen').then(setCanteen).catch(() => {}), [selectedId])
   useEffect(() => { load() }, [load])
   useLive('canteen', load)
   return [canteen, load]
@@ -102,6 +106,7 @@ export default function Layout() {
   const { dark, toggle } = useTheme()
   const connected = useLiveStatus()
   const [canteen] = useCanteen()
+  const { canteens, selectedId, select } = useCanteens()
   const nav = NAV[user.role] || NAV.STUDENT
   const wide = user.role !== 'STUDENT'
 
@@ -109,7 +114,7 @@ export default function Layout() {
     <div className="min-h-dvh pb-24">
       <header className="sticky top-0 z-30 border-b border-line bg-bg/85 backdrop-blur">
         <div className={`mx-auto flex h-16 items-center justify-between gap-3 px-4 ${wide ? 'max-w-5xl' : 'max-w-2xl'}`}>
-          <Brand sub={user.role === 'STAFF' ? 'Kitchen' : user.role === 'ADMIN' ? 'Admin' : null} />
+          <Brand sub={user.role === 'STAFF' ? `Kitchen${canteen ? ' · ' + canteen.name : ''}` : user.role === 'ADMIN' ? 'Admin' : null} />
           <div className="flex items-center gap-2">
             <CanteenPill canteen={canteen} />
             <span title={connected ? 'Live updates on' : 'Reconnecting…'}
@@ -122,9 +127,22 @@ export default function Layout() {
         </div>
       </header>
       {user.role === 'STUDENT' && <AnnouncementBar />}
+      {user.role === 'ADMIN' && canteens.length > 1 && (
+        <div className="border-b border-line bg-card-2">
+          <label className={`mx-auto flex items-center gap-2 px-4 py-1.5 text-sm ${wide ? 'max-w-5xl' : 'max-w-2xl'}`}>
+            <span className="text-muted">Canteen:</span>
+            <select value={selectedId ?? ''} onChange={(e) => select(e.target.value)}
+              className="rounded-lg border border-line bg-card px-2 py-1 font-semibold text-ink outline-none focus:border-brand">
+              {canteens.map((c) => <option key={c.id} value={c.id}>{c.name}{c.active ? '' : ' (hidden)'}</option>)}
+            </select>
+            <span className="hidden text-xs text-muted sm:inline">Menu, kitchen, stock and forecasts follow this choice.</span>
+          </label>
+        </div>
+      )}
 
       <main className={`mx-auto px-4 pt-5 ${wide ? 'max-w-5xl' : 'max-w-2xl'}`}>
-        <Outlet context={{ canteen }} />
+        {/* Remount pages when the canteen changes, so every screen reloads for the new canteen. */}
+        {canteens.length ? <Outlet key={selectedId ?? 'none'} context={{ canteen }} /> : <Spinner />}
       </main>
 
       <nav className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-line bg-card/95 backdrop-blur">

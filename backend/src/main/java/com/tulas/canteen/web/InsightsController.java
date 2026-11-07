@@ -31,9 +31,11 @@ public class InsightsController {
     private final MenuItemRepository dishes;
     private final AuditService audit;
     private final Clock clock;
+    private final com.tulas.canteen.service.CanteenService canteens;
 
     public InsightsController(ForecastService forecasts, MenuService menu, MenuItemRepository dishes,
-                              AuditService audit, Clock clock) {
+                              AuditService audit, Clock clock, com.tulas.canteen.service.CanteenService canteens) {
+        this.canteens = canteens;
         this.forecasts = forecasts;
         this.menu = menu;
         this.dishes = dishes;
@@ -50,23 +52,24 @@ public class InsightsController {
     }
 
     @GetMapping({"/api/kitchen/forecast", "/api/admin/insights/forecast"})
-    public ForecastService.Forecast forecast(@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return forecasts.forecast(target(date));
+    public ForecastService.Forecast forecast(@AuthenticationPrincipal AuthUser me, @RequestParam(required = false) Long canteenId,
+                                            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return forecasts.forecast(canteens.resolve(me, canteenId).getId(), target(date));
     }
 
     @GetMapping("/api/admin/insights/accuracy")
-    public ForecastService.Accuracy accuracy() {
-        return forecasts.accuracy();
+    public ForecastService.Accuracy accuracy(@AuthenticationPrincipal AuthUser me, @RequestParam(required = false) Long canteenId) {
+        return forecasts.accuracy(canteens.resolve(me, canteenId).getId());
     }
 
     @GetMapping("/api/admin/insights/peaks")
-    public ForecastService.Peaks peaks() {
-        return forecasts.peaks();
+    public ForecastService.Peaks peaks(@AuthenticationPrincipal AuthUser me, @RequestParam(required = false) Long canteenId) {
+        return forecasts.peaks(canteens.resolve(me, canteenId).getId());
     }
 
     @GetMapping("/api/admin/insights/sellers")
-    public ForecastService.Sellers sellers() {
-        return forecasts.sellers();
+    public ForecastService.Sellers sellers(@AuthenticationPrincipal AuthUser me, @RequestParam(required = false) Long canteenId) {
+        return forecasts.sellers(canteens.resolve(me, canteenId).getId());
     }
 
     /**
@@ -75,9 +78,9 @@ public class InsightsController {
      */
     @PostMapping("/api/admin/insights/forecast/apply")
     @Transactional
-    public Map<String, Integer> applyForecast(@AuthenticationPrincipal AuthUser me,
+    public Map<String, Integer> applyForecast(@AuthenticationPrincipal AuthUser me, @RequestParam(required = false) Long canteenId,
                                               @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        ForecastService.Forecast f = forecasts.forecast(target(date));
+        ForecastService.Forecast f = forecasts.forecast(canteens.resolve(me, canteenId).getId(), target(date));
         int changed = 0;
         for (ForecastService.DishForecast d : f.dishes()) {
             MenuItem m = dishes.findById(d.id()).orElse(null);

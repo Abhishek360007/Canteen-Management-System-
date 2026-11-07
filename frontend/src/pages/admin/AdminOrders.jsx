@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Download, ListOrdered } from 'lucide-react'
 import { api, dateOf, download, rupees, timeOf } from '../../api'
+import { useCanteens } from '../../context/CanteenContext'
 import { Button, Card, Empty, ErrorNote, PageTitle, Select, Spinner, StatusBadge, useToast } from '../../components/ui'
 
 const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
@@ -9,10 +10,11 @@ const STATUSES = ['', 'PLACED', 'PREPARING', 'READY', 'COLLECTED', 'CANCELLED', 
 export default function AdminOrders() {
   const toast = useToast()
   const today = iso(new Date())
-  const [f, setF] = useState({ from: iso(new Date(Date.now() - 6 * 864e5)), to: today, status: '' })
+  const { canteens } = useCanteens()
+  const [f, setF] = useState({ from: iso(new Date(Date.now() - 6 * 864e5)), to: today, status: '', canteenId: '' })
   const [orders, setOrders] = useState(null)
   const [error, setError] = useState(null)
-  const qs = `from=${f.from}&to=${f.to}${f.status ? `&status=${f.status}` : ''}`
+  const qs = `from=${f.from}&to=${f.to}${f.status ? `&status=${f.status}` : ''}${f.canteenId ? `&canteenId=${f.canteenId}` : ''}`
 
   const load = useCallback(() => {
     setOrders(null)
@@ -30,13 +32,19 @@ export default function AdminOrders() {
           <Download className="size-4" /> CSV
         </Button>} />
 
-      <Card className="mb-4 grid grid-cols-2 gap-3 p-3 sm:grid-cols-3">
+      <Card className="mb-4 grid grid-cols-2 gap-3 p-3 sm:grid-cols-4">
         <label className="block text-sm"><span className="mb-1 block font-medium text-ink-2">From</span>
           <input type="date" value={f.from} max={f.to} onChange={(e) => setF({ ...f, from: e.target.value })}
             className="h-11 w-full rounded-xl border border-line bg-card px-3 outline-none focus:border-brand" /></label>
         <label className="block text-sm"><span className="mb-1 block font-medium text-ink-2">To</span>
           <input type="date" value={f.to} min={f.from} max={today} onChange={(e) => setF({ ...f, to: e.target.value })}
             className="h-11 w-full rounded-xl border border-line bg-card px-3 outline-none focus:border-brand" /></label>
+        {canteens.length > 1 && (
+          <Select label="Canteen" value={f.canteenId} onChange={(e) => setF({ ...f, canteenId: e.target.value })} className="col-span-2 sm:col-span-1">
+            <option value="">All canteens</option>
+            {canteens.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+        )}
         <Select label="Status" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })} className="col-span-2 sm:col-span-1">
           {STATUSES.map((s) => <option key={s} value={s}>{s ? s.replace('_', ' ').toLowerCase() : 'All statuses'}</option>)}
         </Select>
@@ -56,7 +64,7 @@ export default function AdminOrders() {
               <tbody className="divide-y divide-line">
                 {orders.map((o) => (
                   <tr key={o.id} className="align-top hover:bg-card-2">
-                    <td className="p-3 font-semibold">{o.code}</td>
+                    <td className="p-3 font-semibold">{o.code}{canteens.length > 1 && <div className="text-xs font-normal text-muted">{o.canteenName}</div>}</td>
                     <td className="whitespace-nowrap p-3 text-ink-2">{dateOf(o.createdAt)}, {timeOf(o.createdAt)}</td>
                     <td className="p-3">{o.customerName}<div className="text-xs text-muted">{o.customerRollNo}</div></td>
                     <td className="p-3 text-ink-2">{o.items.map((i) => `${i.quantity}× ${i.name}`).join(', ')}</td>

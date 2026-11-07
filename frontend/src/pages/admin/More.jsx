@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { TrendingUp, Boxes, ChefHat, ChevronRight, History, IndianRupee, Megaphone, ScanLine, Settings, Smartphone, User } from 'lucide-react'
+import { Store, TrendingUp, Boxes, ChefHat, ChevronRight, History, IndianRupee, Megaphone, ScanLine, Settings, Smartphone, User } from 'lucide-react'
 import { api } from '../../api'
 import { useLive } from '../../context/LiveContext'
 import { Card, PageTitle } from '../../components/ui'
@@ -13,6 +13,7 @@ export default function More() {
 
   const groups = [
     ['Planning', [
+      ['/admin/canteens', 'Canteens & comparison', Store],
       ['/admin/insights', 'Forecast & insights', TrendingUp],
     ]],
     ['Money', [
@@ -27,7 +28,7 @@ export default function More() {
     ]],
     ['Manage', [
       ['/admin/announcements', 'Announcements', Megaphone],
-      ['/admin/settings', 'Canteen settings & UPI', Settings],
+      ['/admin/settings', 'Settings & UPI', Settings],
       ['/account', 'My account', User],
     ]],
   ]

@@ -70,6 +70,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("select u.id from User u where u.role in :roles and u.blocked = false")
     java.util.List<Long> findIdsByRoleIn(@Param("roles") Collection<Role> roles);
 
+    /** Admins plus the kitchen staff of one canteen (e.g. for its low-stock alerts). */
+    @Query("""
+            select u.id from User u where u.blocked = false
+              and (u.role = com.tulas.canteen.domain.Role.ADMIN
+                   or (u.role = com.tulas.canteen.domain.Role.STAFF and u.canteenId = :canteenId))
+            """)
+    java.util.List<Long> findAdminAndStaffIdsOf(@Param("canteenId") Long canteenId);
+
     boolean existsByReferralCodeIgnoreCase(String code);
 
     @Query("select u from User u where u.birthday is not null and u.role = com.tulas.canteen.domain.Role.STUDENT")

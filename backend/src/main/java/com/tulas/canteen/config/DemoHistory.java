@@ -38,9 +38,9 @@ final class DemoHistory {
             new Basket(new String[]{"Gulab Jamun (2 pcs)"}, 3, 13, 15)
     );
 
-    static void generate(OrderRepository orders, MenuItemRepository menu, AuthService auth, ZoneId zone) {
+    static void generate(OrderRepository orders, MenuItemRepository menu, AuthService auth, ZoneId zone, Canteen canteen) {
         Map<String, MenuItem> byName = new HashMap<>();
-        menu.findAll().forEach(m -> byName.put(m.getName(), m));
+        menu.findByCanteenIdAndArchivedFalseOrderByCategoryAscNameAsc(canteen.getId()).forEach(m -> byName.put(m.getName(), m));
         Random rnd = new Random(42);
 
         List<User> students = new ArrayList<>();
@@ -65,7 +65,8 @@ final class DemoHistory {
                 for (int k = 0; k < count; k++) {
                     Order o = new Order();
                     o.setUser(students.get(rnd.nextInt(students.size())));
-                    o.setCode(String.format("T-%03d", ++n));
+                    o.setCanteen(canteen);
+                    o.setCode(canteen.getCode() + String.format("-%03d", ++n));
                     o.setOrderDate(day);
                     o.setPaymentMethod(rnd.nextBoolean() ? PaymentMethod.WALLET : PaymentMethod.CASH);
                     o.setOtp("0000");

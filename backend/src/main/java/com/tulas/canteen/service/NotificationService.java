@@ -64,7 +64,7 @@ public class NotificationService {
 
     /** Called after an order reserves plates: warn the kitchen once a day when a dish runs low or sells out. */
     @Transactional
-    public void checkLowStock(Long dishId, String name, Integer left, Integer dailyPlates) {
+    public void checkLowStock(Long canteenId, Long dishId, String name, Integer left, Integer dailyPlates) {
         if (left == null) return;
         int threshold = Math.max(3, dailyPlates == null ? 0 : (int) Math.ceil(dailyPlates * 0.1));
         if (left > threshold) return;
@@ -72,10 +72,9 @@ public class NotificationService {
         // Sold out is worth a second alert even if "running low" was sent earlier today.
         Long mapKey = left == 0 ? -dishId : dishId;
         if (today.equals(lowStockSent.put(mapKey, today))) return;
-        notifyStaff("LOW_STOCK",
-                left == 0 ? name + " is sold out" : name + " is running low",
-                left == 0 ? "No plates left today. Make more or switch it off." : "Only " + left + " plate(s) left.",
-                "/kitchen/stock");
+        String title = left == 0 ? name + " is sold out" : name + " is running low";
+        String body = left == 0 ? "No plates left today. Make more or switch it off." : "Only " + left + " plate(s) left.";
+        users.findAdminAndStaffIdsOf(canteenId).forEach(id -> notify(id, "LOW_STOCK", title, body, "/kitchen/stock"));
     }
 
     @Transactional(readOnly = true)

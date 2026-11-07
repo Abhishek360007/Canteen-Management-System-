@@ -25,8 +25,11 @@ public class MenuService {
     private final UserRepository users;
     private final LiveHub live;
     private final DishIngredientRepository recipes;
+    private final CanteenService canteens;
 
-    public MenuService(MenuItemRepository menu, UserRepository users, LiveHub live, DishIngredientRepository recipes) {
+    public MenuService(MenuItemRepository menu, UserRepository users, LiveHub live, DishIngredientRepository recipes,
+                       CanteenService canteens) {
+        this.canteens = canteens;
         this.menu = menu;
         this.users = users;
         this.live = live;
@@ -35,8 +38,10 @@ public class MenuService {
 
     /** Saves a standard-menu dish together with its typical recipe (used for the ingredient forecast). */
     @Transactional
-    public void addDefaultDish(DefaultMenu.Dish d) {
-        MenuItem m = menu.save(d.toMenuItem());
+    public void addDefaultDish(DefaultMenu.Dish d, Long canteenId) {
+        MenuItem dish = d.toMenuItem();
+        dish.setCanteenId(canteenId);
+        MenuItem m = menu.save(dish);
         DefaultMenu.RECIPES.getOrDefault(d.name(), java.util.List.of()).forEach(i ->
                 recipes.save(new DishIngredient(m.getId(), i.name(), i.unit(), new java.math.BigDecimal(i.perPlate()))));
     }
@@ -63,16 +68,17 @@ public class MenuService {
 
     /** Full menu (including items switched off today) with the viewer's favourites marked. */
     @Transactional(readOnly = true)
-    public List<MenuItemView> list(AuthUser me) {
+    public List<MenuItemView> list(AuthUser me, Long canteenId) {
         Set<Long> favs = users.findById(me.id()).map(User::getFavouriteItemIds).map(Set::copyOf).orElse(Set.of());
-        return menu.findByArchivedFalseOrderByCategoryAscNameAsc().stream()
+        return menu.findByCanteenIdAndArchivedFalseOrderByCategoryAscNameAsc(canteenId).stream()
                 .map(m -> MenuItemView.of(m, favs.contains(m.getId())))
                 .toList();
     }
 
     @Transactional
-    public MenuItemView create(MenuItemRequest r) {
+    public MenuItemView create(Long canteenId, MenuItemRequest r) {
         MenuItem m = new MenuItem();
+        m.setCanteenId(canteenId);
         apply(m, r);
         menu.save(m);
         changed();
@@ -102,8 +108,9 @@ public class MenuService {
     }
 
     @Transactional
-    public MenuItemView updateStock(Long id, StockUpdate s) {
+    public MenuItemView updateStock(AuthUser me, Long id, StockUpdate s) {
         MenuItem m = load(id);
+        canteens.checkAccess(me, m.getCanteenId());
         m.setStockToday(s.stockToday());
         m.setAvailable(s.available());
         changed();
@@ -112,13 +119,13 @@ public class MenuService {
 
     /** Adds the standard canteen menu, skipping any dish whose name is already on the menu. */
     @Transactional
-    public int[] importDefaults() {
+    public int[] importDefaults(Long canteenId) {
         Set<String> existing = new java.util.HashSet<>();
-        menu.findByArchivedFalseOrderByCategoryAscNameAsc().forEach(m -> existing.add(m.getName().trim().toLowerCase()));
+        menu.findByCanteenIdAndArchivedFalseOrderByCategoryAscNameAsc(canteenId).forEach(m -> existing.add(m.getName().trim().toLowerCase()));
         int added = 0;
         for (DefaultMenu.Dish d : DefaultMenu.DISHES) {
             if (existing.add(d.name().toLowerCase())) {
-                addDefaultDish(d);
+                addDefaultDish(d, canteenId);
                 added++;
             }
         }
