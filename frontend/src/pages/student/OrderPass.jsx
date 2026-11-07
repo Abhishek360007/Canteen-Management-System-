@@ -135,11 +135,15 @@ export default function OrderPass() {
             ))}
           </ul>
           {order.note && <p className="mt-2 text-xs text-muted">Note: {order.note}</p>}
+          {Number(order.discount) > 0 && (
+            <div className="mt-2 flex justify-between text-sm text-good"><span>Reward points ({order.pointsRedeemed})</span><span>−{rupees(order.discount)}</span></div>
+          )}
           <div className="mt-3 flex justify-between border-t border-line pt-3 font-semibold">
             <span>{order.paymentMethod === 'WALLET' ? 'Paid from wallet' : 'Pay at counter'}</span>
             <span className="font-display text-lg">{rupees(order.total)}</span>
           </div>
           <p className="mt-1 text-xs text-muted">Placed at {timeOf(order.createdAt)}</p>
+          {order.pointsEarned > 0 && <p className="mt-2 rounded-xl bg-good-soft px-3 py-2 text-sm font-medium text-good">🎉 You earned {order.pointsEarned} reward points on this order</p>}
         </div>
       </Card>
 

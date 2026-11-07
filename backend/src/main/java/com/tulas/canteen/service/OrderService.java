@@ -42,13 +42,15 @@ public class OrderService {
     private final SettingsService settings;
     private final LiveHub live;
     private final Clock clock;
+    private final LoyaltyService loyalty;
     private final TransactionTemplate tx;
     private final SecureRandom random = new SecureRandom();
 
     public OrderService(OrderRepository orders, MenuItemRepository menu, UserRepository users,
                         DailyCounterRepository counters, CounterService counterService, WalletService wallet,
-                        SettingsService settings, LiveHub live, Clock clock, PlatformTransactionManager txm) {
+                        SettingsService settings, LiveHub live, Clock clock, PlatformTransactionManager txm, LoyaltyService loyalty) {
         this.tx = new TransactionTemplate(txm);
+        this.loyalty = loyalty;
         this.orders = orders;
         this.menu = menu;
         this.users = users;
@@ -128,6 +130,9 @@ public class OrderService {
         }
 
         LocalTime slot = parseSlot(req.pickupSlot(), rules);
+        int redeem = req.redeemPoints() == null ? 0 : req.redeemPoints();
+        BigDecimal discount = redeem > 0 ? loyalty.discountFor(redeem, total) : BigDecimal.ZERO;
+        total = total.subtract(discount);
         String code = nextCode(today);
 
         // Reserve plates. Each reservation is a conditional UPDATE, so two students can't buy the last plate.
@@ -138,6 +143,7 @@ public class OrderService {
             }
         }
 
+        if (redeem > 0) loyalty.spend(me.id(), redeem, code);
         if (req.paymentMethod() == PaymentMethod.WALLET) {
             wallet.pay(me.id(), total, code);
         }
@@ -148,6 +154,8 @@ public class OrderService {
         o.setOrderDate(today);
         o.setPaymentMethod(req.paymentMethod());
         o.setTotal(total);
+        o.setDiscount(discount);
+        o.setPointsRedeemed(redeem);
         o.setOtp(String.format("%04d", random.nextInt(10_000)));
         o.setPickupSlot(slot);
         o.setNote(req.note() == null || req.note().isBlank() ? null : req.note().trim());
@@ -228,7 +236,7 @@ public class OrderService {
             case COLLECTED -> {
                 // Manual hand-over without OTP, e.g. the student's phone is dead. Staff decide.
                 if (cur != OrderStatus.READY) throw ApiException.badRequest("Mark the order ready before handing it over.");
-                close(o, OrderStatus.COLLECTED);
+                collected(o);
             }
             case NO_SHOW -> {
                 if (cur != OrderStatus.READY) throw badMove(cur, next);
@@ -266,7 +274,7 @@ public class OrderService {
             return new VerifyResult(false, "Wrong code. " + left + " attempt(s) left.", left, OrderView.staff(o));
         }
         if (o.getStatus() != OrderStatus.READY) o.setReadyAt(Instant.now());
-        close(o, OrderStatus.COLLECTED);
+        collected(o);
         notifyChange(o);
         return new VerifyResult(true, "Hand over " + o.getCode() + " to " + o.getUser().getName() + ".", null,
                 OrderView.staff(o));
@@ -298,9 +306,16 @@ public class OrderService {
 
     // ---------------------------------------------------------------- helpers
 
+    /** Handed over: close the order and award reward points on what was paid. */
+    private void collected(Order o) {
+        close(o, OrderStatus.COLLECTED);
+        loyalty.earn(o);
+    }
+
     private void cancel(Order o, String reason, boolean returnPlates) {
         if (returnPlates) releasePlates(o);
         if (o.getPaymentMethod() == PaymentMethod.WALLET) wallet.refund(o.getUser().getId(), o.getTotal(), o.getCode());
+        loyalty.restore(o);
         o.setCancelReason(reason);
         close(o, OrderStatus.CANCELLED);
     }

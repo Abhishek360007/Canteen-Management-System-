@@ -19,20 +19,32 @@ public class AuthService {
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final LoginGuard guard;
+    private final LoyaltyService loyalty;
 
-    public AuthService(UserRepository users, PasswordEncoder encoder, JwtService jwt, LoginGuard guard) {
+    public AuthService(UserRepository users, PasswordEncoder encoder, JwtService jwt, LoginGuard guard,
+                       LoyaltyService loyalty) {
         this.users = users;
         this.encoder = encoder;
         this.jwt = jwt;
         this.guard = guard;
+        this.loyalty = loyalty;
     }
 
     /** Public sign-up always creates a STUDENT. Staff accounts are created by the admin. */
     @Transactional
     public AuthResponse register(RegisterRequest r, String ip) {
         guard.checkSignup(ip);
+        User referrer = null;
+        String code = blankToNull(r.referralCode());
+        if (code != null) {
+            referrer = users.findByReferralCodeIgnoreCase(code)
+                    .filter(x -> x.getRole() == Role.STUDENT)
+                    .orElseThrow(() -> ApiException.badRequest("That invite code doesn't exist. Check it or leave it empty."));
+        }
         User u = createUser(r.name(), r.email(), r.password(), r.phone(), Role.STUDENT);
         u.setRollNo(blankToNull(r.rollNo()));
+        if (referrer != null) u.setReferredById(referrer.getId());
+        loyalty.ensureReferralCode(u);
         return new AuthResponse(jwt.issue(u), UserView.of(u));
     }
 

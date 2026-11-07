@@ -44,6 +44,7 @@ class OrderFlowTest {
     @Autowired SettingsRepository settingsRepo;
     @Autowired CounterService counterService;
     @Autowired DailyCounterRepository counterRepo;
+    @Autowired com.tulas.canteen.service.RecommendationService recommender;
 
     @BeforeEach
     void openAllDay() {
@@ -237,6 +238,116 @@ class OrderFlowTest {
     }
 
     @Test
+    void rewardPointsAreEarnedOnCollectionUsedAtCheckoutAndReturnedOnCancel() throws Exception {
+        String student = register("points" + UUID.randomUUID() + "@college.edu");
+        String admin = login("admin@tulas.local", "Admin@123");
+        String kitchen = login("kitchen@tulas.local", "kitchen123");
+        long sid = call(get("/api/auth/me"), student, 200).get("id").asLong();
+        call(post("/api/admin/users/" + sid + "/recharge").content("{\"amount\":500}"), admin, 200);
+        long thali = idOf(call(get("/api/menu"), student, 200), "Veg Thali");
+        long chai = idOf(call(get("/api/menu"), student, 200), "Masala Chai");
+
+        // ₹180 order collected → 18 points (1 per ₹10, Bronze).
+        JsonNode first = call(post("/api/orders").content(orderJson(thali, 2, "WALLET", 0)), student, 201);
+        collect(first, kitchen);
+        assertThat(call(get("/api/rewards"), student, 200).get("points").asInt()).isEqualTo(18);
+        assertThat(call(get("/api/orders/" + first.get("id").asLong()), student, 200).get("pointsEarned").asInt()).isEqualTo(18);
+
+        // Points rules: steps of 10, at most half the order.
+        call(post("/api/orders").content(orderJson(thali, 1, "WALLET", 15)), student, 400);
+        call(post("/api/orders").content(orderJson(chai, 1, "WALLET", 20)), student, 400); // ₹10 off a ₹15 order > half
+
+        // Use 10 points = ₹5 off: pays ₹85 instead of ₹90.
+        JsonNode second = call(post("/api/orders").content(orderJson(thali, 1, "WALLET", 10)), student, 201);
+        assertThat(second.get("total").decimalValue()).isEqualByComparingTo("85");
+        assertThat(second.get("discount").decimalValue()).isEqualByComparingTo("5");
+        assertThat(call(get("/api/rewards"), student, 200).get("points").asInt()).isEqualTo(8);
+        assertThat(call(get("/api/wallet"), student, 200).get("balance").decimalValue()).isEqualByComparingTo("235");
+
+        // Cancel: money and points both come back.
+        call(post("/api/orders/" + second.get("id").asLong() + "/cancel"), student, 200);
+        assertThat(call(get("/api/rewards"), student, 200).get("points").asInt()).isEqualTo(18);
+        assertThat(call(get("/api/wallet"), student, 200).get("balance").decimalValue()).isEqualByComparingTo("320");
+        // Can't spend more points than you have.
+        call(post("/api/orders").content(orderJson(thali, 2, "WALLET", 20)), student, 400);
+    }
+
+    @Test
+    void referralRewardsBothFriendsAfterFirstCollectedOrder() throws Exception {
+        String inviter = register("inviter" + UUID.randomUUID() + "@college.edu");
+        String kitchen = login("kitchen@tulas.local", "kitchen123");
+        String code = call(get("/api/rewards"), inviter, 200).get("referralCode").asText();
+        assertThat(code).hasSize(7);
+
+        mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"X\",\"email\":\"bad" + UUID.randomUUID() + "@c.edu\",\"password\":\"secret123\",\"referralCode\":\"NOPE999\"}"))
+                .andExpect(status().isBadRequest());
+
+        String body = "{\"name\":\"Friend\",\"email\":\"friend" + UUID.randomUUID() + "@college.edu\",\"password\":\"secret123\",\"referralCode\":\"" + code.toLowerCase() + "\"}";
+        String friend = json.readTree(mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("token").asText();
+
+        long chai = idOf(call(get("/api/menu"), friend, 200), "Masala Chai");
+        collect(call(post("/api/orders").content(orderJson(chai, 1, "CASH", 0)), friend, 201), kitchen);
+        assertThat(call(get("/api/rewards"), friend, 200).get("points").asInt()).isEqualTo(50 + 1);
+        assertThat(call(get("/api/rewards"), inviter, 200).get("points").asInt()).isEqualTo(50);
+        // Only once.
+        collect(call(post("/api/orders").content(orderJson(chai, 1, "CASH", 0)), friend, 201), kitchen);
+        assertThat(call(get("/api/rewards"), inviter, 200).get("points").asInt()).isEqualTo(50);
+    }
+
+    @Test
+    void birthdayCanBeSetOnceAndMustBeReal() throws Exception {
+        String student = register("bday" + UUID.randomUUID() + "@college.edu");
+        call(put("/api/rewards/birthday").content("{\"birthday\":\"2024-01-01\"}"), student, 400); // too young
+        call(put("/api/rewards/birthday").content("{\"birthday\":\"2004-06-15\"}"), student, 200);
+        call(put("/api/rewards/birthday").content("{\"birthday\":\"2004-06-16\"}"), student, 400); // only once
+    }
+
+    @Test
+    void recommendationsLearnWhatIsOrderedTogether() throws Exception {
+        String kitchen = login("kitchen@tulas.local", "kitchen123");
+        String probe = register("probe" + UUID.randomUUID() + "@college.edu");
+        JsonNode menu = call(get("/api/menu"), probe, 200);
+        long dosa = idOf(menu, "Masala Dosa"), coffee = idOf(menu, "Filter Coffee");
+
+        // Four students order dosa + filter coffee together.
+        for (int i = 0; i < 4; i++) {
+            String s = register("pair" + i + UUID.randomUUID() + "@college.edu");
+            String body = "{\"items\":[{\"menuItemId\":" + dosa + ",\"quantity\":1},{\"menuItemId\":" + coffee
+                    + ",\"quantity\":1}],\"paymentMethod\":\"CASH\"}";
+            collect(call(post("/api/orders").content(body), s, 201), kitchen);
+        }
+        // The probe student has only ever had dosa.
+        collect(call(post("/api/orders").content(orderJson(dosa, 1, "CASH", 0)), probe, 201), kitchen);
+        recommender.refresh();
+
+        JsonNode cart = call(post("/api/recommendations/cart").content("{\"itemIds\":[" + dosa + "]}"), probe, 200);
+        assertThat(cart.get(0).get("menuItemId").asLong()).isEqualTo(coffee);
+        assertThat(cart.get(0).get("reason").asText()).contains("Masala Dosa");
+
+        JsonNode feed = call(get("/api/recommendations"), probe, 200);
+        assertThat(feed.get("orderAgain").get(0).get("menuItemId").asLong()).isEqualTo(dosa);
+        assertThat(feed.get("forYou").get(0).get("menuItemId").asLong()).isEqualTo(coffee);
+        assertThat(feed.get("forYou").get(0).get("reason").asText()).isEqualTo("Goes well with Masala Dosa");
+
+        // Alternatives to dosa: other veg breakfast dishes, never the dish itself or a drink.
+        JsonNode similar = call(get("/api/recommendations/similar/" + dosa), probe, 200);
+        assertThat(similar.size()).isEqualTo(3);
+        for (JsonNode r : similar) {
+            JsonNode d = dish(menu, r.get("menuItemId").asLong());
+            assertThat(d.get("category").asText()).isEqualTo("BREAKFAST");
+            assertThat(d.get("veg").asBoolean()).isTrue();
+            assertThat(d.get("id").asLong()).isNotEqualTo(dosa);
+        }
+    }
+
+    private static JsonNode dish(JsonNode menu, long id) {
+        for (JsonNode m : menu) if (m.get("id").asLong() == id) return m;
+        throw new AssertionError("No dish " + id);
+    }
+
+    @Test
     void standardMenuImportSkipsExistingDishes() throws Exception {
         String admin = login("admin@tulas.local", "Admin@123");
         // Demo mode already loaded the standard menu, so everything is skipped.
@@ -347,6 +458,18 @@ class OrderFlowTest {
     }
 
     // ---- helpers
+
+    private static String orderJson(long dishId, int qty, String pay, int redeemPoints) {
+        return "{\"items\":[{\"menuItemId\":" + dishId + ",\"quantity\":" + qty + "}],\"paymentMethod\":\"" + pay
+                + "\",\"redeemPoints\":" + redeemPoints + "}";
+    }
+
+    /** Kitchen marks the order ready and hands it over with the student's code. */
+    private void collect(JsonNode order, String kitchen) throws Exception {
+        call(post("/api/kitchen/orders/" + order.get("id").asLong() + "/status").content("{\"status\":\"READY\"}"), kitchen, 200);
+        call(post("/api/kitchen/verify").content("{\"code\":\"" + order.get("code").asText() + "\",\"otp\":\""
+                + order.get("otp").asText() + "\"}"), kitchen, 200);
+    }
 
     private String register(String email) throws Exception {
         String body = "{\"name\":\"Test Student\",\"email\":\"" + email + "\",\"password\":\"secret123\",\"rollNo\":\"TU-1\"}";

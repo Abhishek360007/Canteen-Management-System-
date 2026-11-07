@@ -42,7 +42,8 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/kitchen/**").hasAnyRole("STAFF", "ADMIN")
-                        .requestMatchers("/api/orders/**", "/api/wallet/**", "/api/favourites/**").hasRole("STUDENT")
+                        .requestMatchers("/api/orders/**", "/api/wallet/**", "/api/favourites/**",
+                                "/api/rewards/**", "/api/recommendations/**").hasRole("STUDENT")
                         .requestMatchers("/api/**").authenticated()
                         // Anything else is the built React app (when served from the same jar).
                         .anyRequest().permitAll())

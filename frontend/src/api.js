@@ -67,8 +67,12 @@ export async function download(path, fallbackName) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export const rupees = (n) =>
-  '₹' + Number(n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+/** ₹60, ₹1,250, ₹10.50 (two decimals only when there are paise). */
+export const rupees = (n) => {
+  const v = Number(n ?? 0)
+  const paise = Math.round(v * 100) % 100 !== 0
+  return '₹' + v.toLocaleString('en-IN', { minimumFractionDigits: paise ? 2 : 0, maximumFractionDigits: 2 })
+}
 
 export const timeOf = (iso) =>
   iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) : ''

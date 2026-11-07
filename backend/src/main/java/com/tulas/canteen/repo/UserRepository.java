@@ -44,6 +44,34 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("update User u set u.walletBalance = u.walletBalance + :amount where u.id = :id")
     int credit(@Param("id") Long id, @Param("amount") BigDecimal amount);
 
+    // ---- reward points (atomic, like the wallet)
+
+    @Modifying(flushAutomatically = true)
+    @Query("update User u set u.loyaltyPoints = coalesce(u.loyaltyPoints, 0) + :points where u.id = :id")
+    int addPoints(@Param("id") Long id, @Param("points") int points);
+
+    /** Returns 0 if the student doesn't have enough points. */
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            update User u set u.loyaltyPoints = coalesce(u.loyaltyPoints, 0) - :points
+            where u.id = :id and coalesce(u.loyaltyPoints, 0) >= :points
+            """)
+    int spendPoints(@Param("id") Long id, @Param("points") int points);
+
+    @Query("select coalesce(u.loyaltyPoints, 0) from User u where u.id = :id")
+    int pointsOf(@Param("id") Long id);
+
+    @Modifying(flushAutomatically = true)
+    @Query("update User u set u.lifetimeSpend = coalesce(u.lifetimeSpend, 0) + :amount where u.id = :id")
+    int addLifetimeSpend(@Param("id") Long id, @Param("amount") BigDecimal amount);
+
+    Optional<User> findByReferralCodeIgnoreCase(String code);
+
+    boolean existsByReferralCodeIgnoreCase(String code);
+
+    @Query("select u from User u where u.birthday is not null and u.role = com.tulas.canteen.domain.Role.STUDENT")
+    java.util.List<User> findAllWithBirthday();
+
     @Query("select coalesce(sum(u.walletBalance), 0) from User u where u.role = :role")
     BigDecimal totalBalance(@Param("role") Role role);
 

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useOutletContext } from 'react-router-dom'
-import { Banknote, Minus, Plus, ShoppingBag, Trash2, Wallet } from 'lucide-react'
+import { Banknote, Gift, Minus, Plus, ShoppingBag, Trash2, Wallet } from 'lucide-react'
+import { RecRows } from '../../components/Recs'
 import { api, newKey, rupees } from '../../api'
 import { useCart } from '../../context/CartContext'
 import { useLive } from '../../context/LiveContext'
 import { DishArt } from '../../components/Brand'
-import { Button, Card, Empty, ErrorNote, PageTitle, Select, VegDot } from '../../components/ui'
+import { Button, Card, Empty, ErrorNote, PageTitle, Select, Toggle, VegDot } from '../../components/ui'
 
 /** Pickup slots every 15 minutes from ~20 minutes from now until closing. */
 function slots(closeTime) {
@@ -47,8 +48,35 @@ export default function Cart() {
   useEffect(() => { loadWallet() }, [])
   useLive('wallet', loadWallet)
 
+  // Reward points: use the most allowed (steps of 10, at most half the order) when switched on.
+  const [rewards, setRewards] = useState(null)
+  const [usePoints, setUsePoints] = useState(false)
+  useEffect(() => { api('/api/rewards').then(setRewards).catch(() => {}) }, [])
+  const step = rewards?.redeemStep || 10
+  const pointValue = Number(rewards?.pointValue || 0.5)
+  const maxByOrder = Math.floor(cart.total / 2 / pointValue / step) * step
+  const usablePoints = rewards ? Math.max(0, Math.min(Math.floor(rewards.points / step) * step, maxByOrder)) : 0
+  const redeem = usePoints ? usablePoints : 0
+  const discount = redeem * pointValue
+  const toPay = cart.total - discount
+
+  // "Goes well with your order": basket suggestions for what's in the cart.
+  const [menu, setMenu] = useState([])
+  const [suggest, setSuggest] = useState([])
+  useEffect(() => { api('/api/menu').then(setMenu).catch(() => {}) }, [])
+  const cartKey = cart.lines.map((l) => l.item.id).sort().join(',')
+  useEffect(() => {
+    if (!cartKey) return
+    const t = setTimeout(() => {
+      api('/api/recommendations/cart', { method: 'POST', body: { itemIds: cartKey.split(',').map(Number) } })
+        .then(setSuggest).catch(() => setSuggest([]))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [cartKey])
+  const menuById = useMemo(() => new Map(menu.map((m) => [m.id, m])), [menu])
+
   const slotList = useMemo(() => slots(canteen?.closeTime), [canteen])
-  const short = pay === 'WALLET' && balance !== null && balance < cart.total
+  const short = pay === 'WALLET' && balance !== null && balance < toPay
   const closed = canteen && !canteen.openNow
 
   const place = async () => {
@@ -63,6 +91,7 @@ export default function Cart() {
           paymentMethod: pay,
           pickupSlot: slot,
           note,
+          redeemPoints: redeem,
         },
       })
       cart.clear()
@@ -110,6 +139,8 @@ export default function Cart() {
         ))}
       </Card>
 
+      <RecRows title="Goes well with your order" recs={suggest} menuById={menuById} onAdd={(d) => cart.add(d)} />
+
       <Card className="mt-4 space-y-4 p-4">
         <Select label="Pickup time" value={slot} onChange={(e) => setSlot(e.target.value)}>
           <option value="">As soon as possible</option>
@@ -134,15 +165,31 @@ export default function Cart() {
         </fieldset>
       </Card>
 
+      {rewards && rewards.points >= step && (
+        <Card className="mt-4 flex items-center justify-between gap-3 p-4">
+          <div>
+            <p className="flex items-center gap-1.5 font-semibold"><Gift className="size-4 text-brand" /> Use reward points</p>
+            <p className="text-sm text-muted">
+              {usablePoints > 0
+                ? `Use ${usablePoints} of your ${rewards.points} points to save ${rupees(usablePoints * pointValue)}`
+                : `You have ${rewards.points} points. Add more to your order to use them.`}
+            </p>
+          </div>
+          <Toggle checked={usePoints && usablePoints > 0} disabled={usablePoints === 0} onChange={setUsePoints} label="Use reward points" />
+        </Card>
+      )}
+
       <Card className="mt-4 p-4">
         <div className="flex justify-between text-sm text-ink-2"><span>Items total</span><span>{rupees(cart.total)}</span></div>
-        <div className="mt-2 flex justify-between font-display text-lg font-bold"><span>To pay</span><span>{rupees(cart.total)}</span></div>
+        {discount > 0 && <div className="mt-1 flex justify-between text-sm text-good"><span>Points ({redeem})</span><span>−{rupees(discount)}</span></div>}
+        <div className="mt-2 flex justify-between font-display text-lg font-bold"><span>To pay</span><span>{rupees(toPay)}</span></div>
+        <p className="mt-1 text-xs text-muted">You'll earn about {Math.floor(toPay / 10 * (rewards?.multiplier || 1))} points when you collect this order.</p>
       </Card>
 
       <div className="mt-4 space-y-3">
         <ErrorNote>{error}</ErrorNote>
         <Button size="lg" className="w-full" loading={busy} disabled={short || closed} onClick={place}>
-          {closed ? 'Canteen is closed' : `Place order · ${rupees(cart.total)}`}
+          {closed ? 'Canteen is closed' : `Place order · ${rupees(toPay)}`}
         </Button>
       </div>
     </>

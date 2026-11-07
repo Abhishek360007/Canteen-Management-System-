@@ -60,6 +60,22 @@ public class Order {
     @Column(length = 200)
     private String note;
 
+    /** Reward points used at checkout, and the rupee discount they gave. total = items − discount. */
+    private Integer pointsRedeemed;
+
+    @Column(precision = 10, scale = 2)
+    private BigDecimal discount;
+
+    /** Points earned when the order was collected. */
+    private Integer pointsEarned;
+
+    public int getPointsRedeemed() { return pointsRedeemed == null ? 0 : pointsRedeemed; }
+    public void setPointsRedeemed(int p) { this.pointsRedeemed = p; }
+    public BigDecimal getDiscount() { return discount == null ? BigDecimal.ZERO : discount; }
+    public void setDiscount(BigDecimal discount) { this.discount = discount; }
+    public int getPointsEarned() { return pointsEarned == null ? 0 : pointsEarned; }
+    public void setPointsEarned(int p) { this.pointsEarned = p; }
+
     /** Longest prep time among the dishes, copied at order time; used for the ETA. */
     @Column(nullable = false)
     private int estPrepMinutes = 10;

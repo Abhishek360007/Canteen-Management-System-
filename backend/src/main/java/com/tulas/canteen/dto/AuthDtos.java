@@ -19,7 +19,9 @@ public final class AuthDtos {
             @NotBlank @Email @Size(max = 120) String email,
             @NotBlank @Size(min = 6, max = 72) String password,
             @Pattern(regexp = "^$|^[0-9]{10}$", message = "must be 10 digits") String phone,
-            @Size(max = 30) String rollNo) {}
+            @Size(max = 30) String rollNo,
+            /** Optional friend's invite code. */
+            @Size(max = 12) String referralCode) {}
 
     public record LoginRequest(@NotBlank String email, @NotBlank String password) {}
 

@@ -4,7 +4,9 @@ import jakarta.persistence.*;
 
 import java.math.BigDecimal;
 
+/** {@code @DynamicUpdate}: saving a rating can't overwrite plates-left changed by a concurrent order. */
 @Entity
+@org.hibernate.annotations.DynamicUpdate
 @Table(name = "menu_items")
 public class MenuItem {
 

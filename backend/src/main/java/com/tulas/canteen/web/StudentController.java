@@ -3,6 +3,8 @@ package com.tulas.canteen.web;
 import com.tulas.canteen.dto.AdminDtos.SpendingView;
 import com.tulas.canteen.dto.AdminDtos.TopupBody;
 import com.tulas.canteen.dto.AdminDtos.TopupView;
+import com.tulas.canteen.service.LoyaltyService;
+import com.tulas.canteen.service.RecommendationService;
 import com.tulas.canteen.service.TopupService;
 import com.tulas.canteen.dto.AdminDtos.WalletView;
 import com.tulas.canteen.dto.OrderDtos.OrderView;
@@ -30,9 +32,13 @@ public class StudentController {
     private final MenuService menu;
     private final ReportService reports;
     private final TopupService topups;
+    private final LoyaltyService loyalty;
+    private final RecommendationService recommender;
 
     public StudentController(OrderService orders, WalletService wallet, MenuService menu, ReportService reports,
-                             TopupService topups) {
+                             TopupService topups, LoyaltyService loyalty, RecommendationService recommender) {
+        this.loyalty = loyalty;
+        this.recommender = recommender;
         this.orders = orders;
         this.wallet = wallet;
         this.menu = menu;
@@ -75,6 +81,40 @@ public class StudentController {
     @GetMapping("/wallet/spending")
     public SpendingView spending(@AuthenticationPrincipal AuthUser me) {
         return reports.spending(me.id());
+    }
+
+    // ---- rewards
+
+    @GetMapping("/rewards")
+    public LoyaltyService.Summary rewards(@AuthenticationPrincipal AuthUser me) {
+        return loyalty.summary(me.id());
+    }
+
+    public record BirthdayBody(@jakarta.validation.constraints.NotNull java.time.LocalDate birthday) {}
+
+    @PutMapping("/rewards/birthday")
+    public LoyaltyService.Summary setBirthday(@AuthenticationPrincipal AuthUser me, @Valid @RequestBody BirthdayBody b) {
+        loyalty.setBirthday(me.id(), b.birthday());
+        return loyalty.summary(me.id());
+    }
+
+    // ---- recommendations
+
+    @GetMapping("/recommendations")
+    public RecommendationService.Feed recommendations(@AuthenticationPrincipal AuthUser me) {
+        return recommender.feed(me.id());
+    }
+
+    public record CartBody(@jakarta.validation.constraints.Size(max = 30) List<Long> itemIds) {}
+
+    @PostMapping("/recommendations/cart")
+    public List<RecommendationService.Rec> forCart(@Valid @RequestBody CartBody b) {
+        return recommender.forCart(b.itemIds() == null ? List.of() : b.itemIds());
+    }
+
+    @GetMapping("/recommendations/similar/{id}")
+    public List<RecommendationService.Rec> similar(@PathVariable Long id) {
+        return recommender.similar(id);
     }
 
     /** Ask for a UPI payment to be added to the wallet. */

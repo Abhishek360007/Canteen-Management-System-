@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { Link, useOutletContext } from 'react-router-dom'
 import TopupCard from '../../components/TopupCard'
-import { ArrowDownLeft, ArrowUpRight, RotateCcw, Wallet as WalletIcon } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, ChevronRight, Gift, RotateCcw, Wallet as WalletIcon } from 'lucide-react'
 import { api, dateOf, rupees, timeOf } from '../../api'
 import { useLive } from '../../context/LiveContext'
 import { Card, Empty, ErrorNote, PageTitle, Spinner } from '../../components/ui'
@@ -16,11 +16,13 @@ export default function WalletPage() {
   const { canteen } = useOutletContext()
   const [wallet, setWallet] = useState(null)
   const [spend, setSpend] = useState(null)
+  const [points, setPoints] = useState(null)
   const [error, setError] = useState(null)
 
   const load = useCallback(() => {
     api('/api/wallet').then(setWallet).catch((e) => setError(e.message))
     api('/api/wallet/spending').then(setSpend).catch(() => {})
+    api('/api/rewards').then((r) => setPoints(r.points)).catch(() => {})
   }, [])
   useEffect(() => { load() }, [load])
   useLive('wallet', load)
@@ -39,6 +41,15 @@ export default function WalletPage() {
           {canteen?.upiId ? 'Add money with UPI below, or recharge at the canteen office.' : 'Recharge at the canteen office with cash or UPI. It shows up here instantly.'}
         </p>
       </div>
+
+      <Link to="/rewards" className="mt-4 flex items-center gap-3 rounded-2xl border border-line bg-card p-4 hover:bg-card-2">
+        <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand-ink"><Gift className="size-5" /></span>
+        <span className="flex-1">
+          <span className="block font-semibold">{points === null ? 'Rewards' : `${points} reward points`}</span>
+          <span className="block text-sm text-muted">Earn on every order · invite friends · birthday treat</span>
+        </span>
+        <ChevronRight className="size-5 text-muted" />
+      </Link>
 
       <TopupCard canteen={canteen} />
 

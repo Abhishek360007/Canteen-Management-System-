@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { Button, ErrorNote, Input } from '../components/ui'
 import AuthShell from './AuthShell'
@@ -7,7 +7,8 @@ import AuthShell from './AuthShell'
 export default function Register() {
   const { register } = useAuth()
   const nav = useNavigate()
-  const [form, setForm] = useState({ name: '', email: '', rollNo: '', phone: '', password: '' })
+  const [params] = useSearchParams()
+  const [form, setForm] = useState({ name: '', email: '', rollNo: '', phone: '', password: '', referralCode: (params.get('ref') || '').toUpperCase() })
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
@@ -38,6 +39,9 @@ export default function Register() {
         </div>
         <Input label="Password" type="password" required minLength={6} autoComplete="new-password"
           hint="At least 6 characters" value={form.password} onChange={set('password')} />
+        <Input label="Friend's invite code (optional)" maxLength={12} value={form.referralCode}
+          onChange={(e) => setForm({ ...form, referralCode: e.target.value.toUpperCase() })}
+          hint="You both get 50 points after your first order." />
         <ErrorNote>{error}</ErrorNote>
         <Button type="submit" loading={busy} className="w-full" size="lg">Create account</Button>
       </form>

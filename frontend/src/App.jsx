@@ -10,6 +10,7 @@ import Cart from './pages/student/Cart'
 import Orders from './pages/student/Orders'
 import OrderPass from './pages/student/OrderPass'
 import WalletPage from './pages/student/Wallet'
+import Rewards from './pages/student/Rewards'
 import Board from './pages/kitchen/Board'
 import Verify from './pages/kitchen/Verify'
 import Stock from './pages/kitchen/Stock'
@@ -50,6 +51,7 @@ export default function App() {
         <Route path="/orders" element={<Guard roles={S}><Orders /></Guard>} />
         <Route path="/orders/:id" element={<Guard roles={S}><OrderPass /></Guard>} />
         <Route path="/wallet" element={<Guard roles={S}><WalletPage /></Guard>} />
+        <Route path="/rewards" element={<Guard roles={S}><Rewards /></Guard>} />
 
         <Route path="/kitchen" element={<Guard roles={K}><Board /></Guard>} />
         <Route path="/kitchen/verify" element={<Guard roles={K}><Verify /></Guard>} />

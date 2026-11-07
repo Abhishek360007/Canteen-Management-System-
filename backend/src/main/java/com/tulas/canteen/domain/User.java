@@ -7,7 +7,12 @@ import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
 
+/**
+ * {@code @DynamicUpdate}: saving a change (e.g. blocking a user) writes only the changed columns, so it can
+ * never overwrite a wallet balance or points total that an atomic UPDATE changed in the meantime.
+ */
 @Entity
+@org.hibernate.annotations.DynamicUpdate
 @Table(name = "users", uniqueConstraints = @UniqueConstraint(columnNames = "email"))
 public class User {
 
@@ -58,6 +63,43 @@ public class User {
 
     public int getTokenVersion() { return tokenVersion == null ? 0 : tokenVersion; }
     public void bumpTokenVersion() { tokenVersion = getTokenVersion() + 1; }
+
+    // ---- rewards (all nullable so the columns can be added to an existing database)
+
+    /** Reward points balance. Changed only through atomic updates in UserRepository. */
+    private Integer loyaltyPoints;
+
+    /** Total paid for collected orders; decides the reward tier. */
+    @Column(precision = 12, scale = 2)
+    private BigDecimal lifetimeSpend;
+
+    /** Optional; can be set once (stops changing it every day for bonus points). */
+    private java.time.LocalDate birthday;
+
+    /** Year the last birthday bonus was given, so it's given once a year. */
+    private Integer birthdayBonusYear;
+
+    /** This student's code to invite friends, e.g. "ASHA7K2". */
+    @Column(length = 12, unique = true)
+    private String referralCode;
+
+    /** Who invited this student (rewarded when this student's first order is collected). */
+    private Long referredById;
+
+    private Boolean referralRewarded;
+
+    public int getLoyaltyPoints() { return loyaltyPoints == null ? 0 : loyaltyPoints; }
+    public BigDecimal getLifetimeSpend() { return lifetimeSpend == null ? BigDecimal.ZERO : lifetimeSpend; }
+    public java.time.LocalDate getBirthday() { return birthday; }
+    public void setBirthday(java.time.LocalDate birthday) { this.birthday = birthday; }
+    public Integer getBirthdayBonusYear() { return birthdayBonusYear; }
+    public void setBirthdayBonusYear(Integer year) { this.birthdayBonusYear = year; }
+    public String getReferralCode() { return referralCode; }
+    public void setReferralCode(String referralCode) { this.referralCode = referralCode; }
+    public Long getReferredById() { return referredById; }
+    public void setReferredById(Long referredById) { this.referredById = referredById; }
+    public boolean isReferralRewarded() { return Boolean.TRUE.equals(referralRewarded); }
+    public void setReferralRewarded(boolean v) { this.referralRewarded = v; }
 
     public Long getId() { return id; }
     public String getName() { return name; }

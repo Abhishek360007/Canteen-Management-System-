@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useCart } from '../../context/CartContext'
 import { useLive } from '../../context/LiveContext'
 import { DishArt } from '../../components/Brand'
+import { RecStrip } from '../../components/Recs'
 import { Empty, ErrorNote, Spinner, VegDot, useToast } from '../../components/ui'
 
 const CATS = [
@@ -28,6 +29,7 @@ export default function Menu() {
   const [cat, setCat] = useState('ALL')
   const [q, setQ] = useState('')
   const [vegOnly, setVegOnly] = useState(false)
+  const [recs, setRecs] = useState(null)
 
   const load = useCallback(() =>
     api('/api/menu').then((m) => { setMenu(m); cart.sync(m) }).catch((e) => setError(e.message)),
@@ -35,6 +37,21 @@ export default function Menu() {
   [])
   useEffect(() => { load() }, [load])
   useLive('menu', load)
+
+  // Personal recommendations; refreshed after each order so "order again" stays current.
+  const loadRecs = useCallback(() => api('/api/recommendations').then(setRecs).catch(() => {}), [])
+  useEffect(() => { loadRecs() }, [loadRecs])
+  useLive('order', loadRecs)
+  const menuById = useMemo(() => new Map((menu || []).map((m) => [m.id, m])), [menu])
+
+  const addItem = (item) => {
+    if (item.stockToday != null && cart.qtyOf(item.id) >= item.stockToday) {
+      toast(`Only ${item.stockToday} left`, 'error')
+      return
+    }
+    cart.add(item)
+  }
+  const browsing = cat === 'ALL' && !q.trim()
 
   const shown = useMemo(() => {
     if (!menu) return []
@@ -105,16 +122,20 @@ export default function Menu() {
         </Empty>
       )}
 
+      {browsing && menu && recs && !closed && (
+        <>
+          <RecStrip title="Recommended for you" hint={recs.vegOnly ? 'Veg picks, based on your orders' : 'Based on your orders'}
+            recs={recs.forYou} menuById={menuById} onAdd={addItem} qtyOf={cart.qtyOf} />
+          <RecStrip title="Order again" recs={recs.orderAgain} menuById={menuById} onAdd={addItem} qtyOf={cart.qtyOf} />
+          <RecStrip title="Trending this week" recs={recs.trending} menuById={menuById} onAdd={addItem} qtyOf={cart.qtyOf} />
+          {menu.length > 0 && <h2 className="mb-2 font-display text-lg font-bold">Full menu</h2>}
+        </>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2">
         {shown.map((item) => (
           <DishCard key={item.id} item={item} qty={cart.qtyOf(item.id)} disabled={closed}
-            onAdd={() => {
-              if (item.stockToday != null && cart.qtyOf(item.id) >= item.stockToday) {
-                toast(`Only ${item.stockToday} left`, 'error')
-                return
-              }
-              cart.add(item)
-            }}
+            onAdd={() => addItem(item)} menuById={menuById} onAddOther={addItem}
             onRemove={() => cart.remove(item.id)} onFav={() => toggleFav(item)} />
         ))}
       </div>
@@ -130,8 +151,10 @@ export default function Menu() {
   )
 }
 
-function DishCard({ item, qty, onAdd, onRemove, onFav, disabled }) {
+function DishCard({ item, qty, onAdd, onRemove, onFav, disabled, menuById, onAddOther }) {
   const low = item.stockToday != null && item.stockToday > 0 && item.stockToday <= 5
+  const [alts, setAlts] = useState(null)
+  const showAlts = () => api(`/api/recommendations/similar/${item.id}`).then(setAlts).catch(() => setAlts([]))
   return (
     <div className={`flex gap-3 rounded-2xl border border-line bg-card p-3 ${item.soldOut ? 'opacity-60' : ''}`}>
       <div className="relative shrink-0">
@@ -154,7 +177,11 @@ function DishCard({ item, qty, onAdd, onRemove, onFav, disabled }) {
         </div>
         <div className="mt-auto flex items-center justify-between pt-2">
           <span className="font-display text-lg font-bold">{rupees(item.price)}</span>
-          {item.soldOut ? null : qty === 0 ? (
+          {item.soldOut ? (
+            alts === null
+              ? <button onClick={showAlts} className="text-xs font-semibold text-brand">See alternatives</button>
+              : null
+          ) : qty === 0 ? (
             <button onClick={onAdd} disabled={disabled}
               className="h-9 rounded-xl border-2 border-brand px-5 text-sm font-bold text-brand transition hover:bg-brand-soft disabled:opacity-40">
               ADD
@@ -167,6 +194,17 @@ function DishCard({ item, qty, onAdd, onRemove, onFav, disabled }) {
             </div>
           )}
         </div>
+        {item.soldOut && alts && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {alts.length === 0 && <span className="text-xs text-muted">No similar dishes right now.</span>}
+            {alts.map((a) => menuById.get(a.menuItemId)).filter(Boolean).map((d) => (
+              <button key={d.id} onClick={() => onAddOther(d)}
+                className="rounded-full border border-brand/40 bg-brand-soft px-2.5 py-1 text-xs font-semibold text-brand-ink">
+                + {d.name} · {rupees(d.price)}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

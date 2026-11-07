@@ -24,7 +24,9 @@ public final class OrderDtos {
             @NotNull PaymentMethod paymentMethod,
             /** "HH:mm", or empty for as soon as possible. */
             @Pattern(regexp = "^$|^([01]\\d|2[0-3]):[0-5]\\d$", message = "must be HH:mm") String pickupSlot,
-            @Size(max = 200) String note) {}
+            @Size(max = 200) String note,
+            /** Reward points to use (steps of 10); null/0 = none. */
+            @Min(0) @Max(100000) Integer redeemPoints) {}
 
     public record StatusUpdate(@NotNull OrderStatus status, @Size(max = 200) String reason) {}
 
@@ -46,14 +48,16 @@ public final class OrderDtos {
                             BigDecimal total, String otp, LocalTime pickupSlot, String note, Integer rating,
                             String cancelReason, Instant createdAt, Instant readyAt, Instant closedAt,
                             String customerName, String customerRollNo, List<LineView> items,
-                            Long ahead, Integer etaMinutes) {
+                            Long ahead, Integer etaMinutes,
+                            BigDecimal subtotal, BigDecimal discount, int pointsRedeemed, int pointsEarned) {
 
         public static OrderView of(Order o, boolean showOtp, Long ahead, Integer eta) {
             return new OrderView(o.getId(), o.getCode(), o.getOrderDate(), o.getStatus(), o.getPaymentMethod(),
                     o.getTotal(), showOtp ? o.getOtp() : null, o.getPickupSlot(), o.getNote(), o.getRating(),
                     o.getCancelReason(), o.getCreatedAt(), o.getReadyAt(), o.getClosedAt(),
                     o.getUser().getName(), o.getUser().getRollNo(),
-                    o.getItems().stream().map(LineView::of).toList(), ahead, eta);
+                    o.getItems().stream().map(LineView::of).toList(), ahead, eta,
+                    o.getTotal().add(o.getDiscount()), o.getDiscount(), o.getPointsRedeemed(), o.getPointsEarned());
         }
 
         public static OrderView staff(Order o) {
