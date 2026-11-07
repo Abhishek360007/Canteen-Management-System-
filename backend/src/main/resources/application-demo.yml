@@ -2,6 +2,7 @@
 # Adds a demo menu and the demo logins listed in the README. Never use this profile in production.
 app:
   seed-demo: true
+  seed-demo-history: true
   jwt:
     secret: ${JWT_SECRET:local-demo-secret-not-for-production-0123456789}
   admin:

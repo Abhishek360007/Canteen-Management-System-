@@ -37,14 +37,21 @@ public class DataSeeder implements ApplicationRunner {
     private final AuthService auth;
     private final WalletService wallet;
     private final SettingsService settings;
+    private final com.tulas.canteen.service.MenuService menuService;
 
     @Value("${app.admin.email}") private String adminEmail;
     @Value("${app.admin.password}") private String adminPassword;
     @Value("${app.admin.name}") private String adminName;
     @Value("${app.seed-demo}") private boolean seedDemo;
+    /** Four weeks of sample sales for the forecast pages (demo mode only). */
+    @Value("${app.seed-demo-history:false}") private boolean demoHistory;
+    @Value("${app.zone}") private String zone;
+    @org.springframework.beans.factory.annotation.Autowired private com.tulas.canteen.repo.OrderRepository orders;
 
     public DataSeeder(UserRepository users, MenuItemRepository menu, AnnouncementRepository announcements,
-                      AuthService auth, WalletService wallet, SettingsService settings) {
+                      AuthService auth, WalletService wallet, SettingsService settings,
+                      com.tulas.canteen.service.MenuService menuService) {
+        this.menuService = menuService;
         this.users = users;
         this.menu = menu;
         this.announcements = announcements;
@@ -80,7 +87,8 @@ public class DataSeeder implements ApplicationRunner {
         student.setRollNo("TU-CSE-001");
         wallet.recharge(student.getId(), new BigDecimal("500.00"), "Welcome balance", "system");
 
-        DefaultMenu.DISHES.forEach(d -> menu.save(d.toMenuItem()));
+        DefaultMenu.DISHES.forEach(menuService::addDefaultDish);
+        if (demoHistory) DemoHistory.generate(orders, menu, auth, java.time.ZoneId.of(zone));
 
         Announcement a = new Announcement();
         a.setMessage("Welcome to Tula's Canteen! Order ahead, skip the queue, and collect with your pickup code.");

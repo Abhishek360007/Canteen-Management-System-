@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, rupees } from '../../api'
 import { useLive } from '../../context/LiveContext'
 import { RankBars } from '../../components/Charts'
+import { Stat } from '../../components/Stat'
+import { ForecastTab } from '../admin/Insights'
 import { Card, ErrorNote, PageTitle, Spinner } from '../../components/ui'
 
 const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
@@ -29,6 +31,9 @@ export default function Summary() {
             <Stat label="Orders" value={s.orders} hint={`${s.collected} collected · ${s.pending} in progress`} />
             <Stat label="Not completed" value={s.cancelled + s.noShows} hint={`${s.cancelled} cancelled · ${s.noShows} not collected`} />
           </div>
+          <h2 className="mb-3 mt-6 font-display text-lg font-bold">Plan for the coming days</h2>
+          <ForecastTab compact />
+
           <Card className="mt-4 p-4">
             <h2 className="mb-3 font-semibold">Items sold</h2>
             {s.items.length ? (
@@ -41,12 +46,3 @@ export default function Summary() {
   )
 }
 
-export function Stat({ label, value, hint, strong }) {
-  return (
-    <Card className={`p-4 ${strong ? 'border-brand bg-brand-soft' : ''}`}>
-      <p className="text-xs font-medium text-muted">{label}</p>
-      <p className="font-display text-2xl font-bold tracking-tight">{value}</p>
-      {hint && <p className="mt-0.5 text-xs text-ink-2">{hint}</p>}
-    </Card>
-  )
-}

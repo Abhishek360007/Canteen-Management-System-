@@ -5,7 +5,7 @@ import { api, rupees } from '../../api'
 import { useLive } from '../../context/LiveContext'
 import { BarChart, RankBars } from '../../components/Charts'
 import { Card, ErrorNote, PageTitle, Spinner } from '../../components/ui'
-import { Stat } from '../kitchen/Summary'
+import { Stat } from '../../components/Stat'
 
 export default function Dashboard() {
   const [d, setD] = useState(null)
@@ -37,7 +37,8 @@ export default function Dashboard() {
 
   return (
     <>
-      <PageTitle title="Dashboard" sub="Today at Tula's Canteen" />
+      <PageTitle title="Dashboard" sub="Today at Tula's Canteen"
+        right={<Link to="/admin/insights" className="flex items-center gap-1 rounded-xl border border-line bg-card px-3 py-2 text-sm font-semibold hover:bg-card-2">Forecast & insights <ChevronRight className="size-4" /></Link>} />
       {d.pendingTopups > 0 && (
         <Link to="/admin/topups" className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-warn-soft p-3.5 text-sm font-medium text-warn">
           <span>{d.pendingTopups} UPI top-up{d.pendingTopups > 1 ? 's' : ''} waiting for approval</span>

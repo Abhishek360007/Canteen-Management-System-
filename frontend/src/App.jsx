@@ -24,6 +24,7 @@ import Announcements from './pages/admin/Announcements'
 import Settings from './pages/admin/Settings'
 import Topups from './pages/admin/Topups'
 import Activity from './pages/admin/Activity'
+import Insights from './pages/admin/Insights'
 
 function Guard({ roles, children }) {
   const { user } = useAuth()
@@ -67,6 +68,7 @@ export default function App() {
         <Route path="/admin/settings" element={<Guard roles={A}><Settings /></Guard>} />
         <Route path="/admin/topups" element={<Guard roles={A}><Topups /></Guard>} />
         <Route path="/admin/activity" element={<Guard roles={A}><Activity /></Guard>} />
+        <Route path="/admin/insights" element={<Guard roles={A}><Insights /></Guard>} />
 
         <Route path="/account" element={<Account />} />
       </Route>

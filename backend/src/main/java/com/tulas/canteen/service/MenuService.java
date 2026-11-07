@@ -1,7 +1,9 @@
 package com.tulas.canteen.service;
 
 import com.tulas.canteen.config.ApiException;
+import com.tulas.canteen.domain.DishIngredient;
 import com.tulas.canteen.domain.MenuItem;
+import com.tulas.canteen.repo.DishIngredientRepository;
 import com.tulas.canteen.domain.User;
 import com.tulas.canteen.dto.MenuDtos.MenuItemRequest;
 import com.tulas.canteen.dto.MenuDtos.MenuItemView;
@@ -22,11 +24,41 @@ public class MenuService {
     private final MenuItemRepository menu;
     private final UserRepository users;
     private final LiveHub live;
+    private final DishIngredientRepository recipes;
 
-    public MenuService(MenuItemRepository menu, UserRepository users, LiveHub live) {
+    public MenuService(MenuItemRepository menu, UserRepository users, LiveHub live, DishIngredientRepository recipes) {
         this.menu = menu;
         this.users = users;
         this.live = live;
+        this.recipes = recipes;
+    }
+
+    /** Saves a standard-menu dish together with its typical recipe (used for the ingredient forecast). */
+    @Transactional
+    public void addDefaultDish(DefaultMenu.Dish d) {
+        MenuItem m = menu.save(d.toMenuItem());
+        DefaultMenu.RECIPES.getOrDefault(d.name(), java.util.List.of()).forEach(i ->
+                recipes.save(new DishIngredient(m.getId(), i.name(), i.unit(), new java.math.BigDecimal(i.perPlate()))));
+    }
+
+    public record RecipeLine(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 60) String name,
+                             @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 10) String unit,
+                             @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.DecimalMin("0.001")
+                             @jakarta.validation.constraints.DecimalMax("100") java.math.BigDecimal perPlate) {}
+
+    @Transactional(readOnly = true)
+    public java.util.List<RecipeLine> recipe(Long dishId) {
+        load(dishId);
+        return recipes.findByMenuItemIdOrderByIdAsc(dishId).stream()
+                .map(i -> new RecipeLine(i.getName(), i.getUnit(), i.getPerPlate())).toList();
+    }
+
+    @Transactional
+    public java.util.List<RecipeLine> setRecipe(Long dishId, java.util.List<RecipeLine> lines) {
+        load(dishId);
+        recipes.deleteByMenuItem(dishId);
+        lines.forEach(l -> recipes.save(new DishIngredient(dishId, l.name().trim(), l.unit().trim(), l.perPlate())));
+        return recipe(dishId);
     }
 
     /** Full menu (including items switched off today) with the viewer's favourites marked. */
@@ -86,7 +118,7 @@ public class MenuService {
         int added = 0;
         for (DefaultMenu.Dish d : DefaultMenu.DISHES) {
             if (existing.add(d.name().toLowerCase())) {
-                menu.save(d.toMenuItem());
+                addDefaultDish(d);
                 added++;
             }
         }

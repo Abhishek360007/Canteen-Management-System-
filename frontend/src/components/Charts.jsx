@@ -92,3 +92,103 @@ export function RankBars({ rows, format = (v) => v }) {
     </ul>
   )
 }
+
+/**
+ * Actual (bars, --chart) vs forecast (line with markers, --chart-2) on one axis, with a legend,
+ * a per-day hover tooltip and a screen-reader table.
+ */
+export function ActualVsForecast({ data, height = 200, label }) {
+  const [hover, setHover] = useState(null)
+  const [box, W] = useWidth()
+  const max = Math.max(1, ...data.flatMap((d) => [d.actual, d.predicted]))
+  const pad = { t: 12, b: 26, l: 8, r: 8 }
+  const innerH = height - pad.t - pad.b
+  const slot = (W - pad.l - pad.r) / Math.max(1, data.length)
+  const barW = Math.min(28, slot - 2 - slot * 0.4)
+  const y = (v) => pad.t + innerH - (v / max) * innerH
+  const cx = (i) => pad.l + slot * i + slot / 2
+  const line = data.map((d, i) => `${i ? 'L' : 'M'}${cx(i)},${y(d.predicted)}`).join(' ')
+
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap gap-4 text-xs text-ink-2" aria-hidden="true">
+        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-sm" style={{ background: 'var(--chart)' }} /> Actual plates sold</span>
+        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4" style={{ background: 'var(--chart-2)' }} /><span className="-ml-2.5 size-2 rounded-full border-2" style={{ borderColor: 'var(--chart-2)', background: 'var(--card)' }} /> Forecast</span>
+      </div>
+      <div className="relative" ref={box}>
+        <svg viewBox={`0 0 ${W} ${height}`} width={W} height={height} className="block max-w-full" role="img" aria-label={label}>
+          {[0.25, 0.5, 0.75, 1].map((f) => (
+            <line key={f} x1={pad.l} x2={W - pad.r} y1={pad.t + innerH * (1 - f)} y2={pad.t + innerH * (1 - f)} stroke="var(--chart-grid)" />
+          ))}
+          <line x1={pad.l} x2={W - pad.r} y1={pad.t + innerH} y2={pad.t + innerH} stroke="var(--line)" />
+          {data.map((d, i) => {
+            const h = (d.actual / max) * innerH
+            const x = cx(i) - barW / 2
+            const r = Math.min(4, barW / 2, h)
+            const top = pad.t + innerH - h
+            return (
+              <g key={d.label} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}
+                onFocus={() => setHover(i)} onBlur={() => setHover(null)} tabIndex={0} className="outline-none"
+                aria-label={`${d.label}: actual ${d.actual}, forecast ${d.predicted}`}>
+                <rect x={pad.l + slot * i} y={pad.t} width={slot} height={innerH} fill="transparent" />
+                {h > 0 && (
+                  <path d={`M${x},${top + h} V${top + r} Q${x},${top} ${x + r},${top} H${x + barW - r} Q${x + barW},${top} ${x + barW},${top + r} V${top + h} Z`}
+                    fill="var(--chart)" opacity={hover === null || hover === i ? 1 : 0.45} />
+                )}
+                <text x={cx(i)} y={height - 8} textAnchor="middle" fontSize="12" fill="var(--muted)">{d.short}</text>
+              </g>
+            )
+          })}
+          <path d={line} fill="none" stroke="var(--chart-2)" strokeWidth="2" pointerEvents="none" />
+          {data.map((d, i) => (
+            <circle key={d.label} cx={cx(i)} cy={y(d.predicted)} r="4" fill="var(--card)" stroke="var(--chart-2)" strokeWidth="2" pointerEvents="none" />
+          ))}
+        </svg>
+        {hover !== null && (
+          <div className="pointer-events-none absolute -top-2 rounded-lg border border-line bg-card px-2.5 py-1.5 text-xs shadow-md"
+            style={{ left: `${(cx(hover) / W) * 100}%`, transform: 'translate(-50%, -100%)' }}>
+            <div className="text-muted">{data[hover].label}</div>
+            <div className="text-ink">Actual <b>{data[hover].actual}</b></div>
+            <div className="text-ink">Forecast <b>{data[hover].predicted}</b></div>
+          </div>
+        )}
+        <table className="sr-only">
+          <caption>{label}</caption>
+          <thead><tr><th>Day</th><th>Actual</th><th>Forecast</th></tr></thead>
+          <tbody>{data.map((d) => <tr key={d.label}><th>{d.label}</th><td>{d.actual}</td><td>{d.predicted}</td></tr>)}</tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+/** Weekday × hour heatmap, one hue light→dark (sequential). Values on hover; table for screen readers. */
+export function Heatmap({ rows, cols, values, format = (v) => v, label }) {
+  const max = Math.max(0.0001, ...values.flat())
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-separate border-spacing-0.5 text-xs" aria-label={label}>
+        <thead>
+          <tr><th />{cols.map((c) => <th key={c} scope="col" className="px-0.5 pb-1 text-center font-normal text-muted">{c}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={r}>
+              <th scope="row" className="pr-2 text-left font-medium text-ink-2">{r}</th>
+              {values[i].map((v, j) => (
+                <td key={j} title={`${r} ${cols[j]}: ${format(v)}`} aria-label={`${r} ${cols[j]}: ${format(v)}`}
+                  className="h-7 min-w-6 rounded-[4px]"
+                  style={{ background: v > 0 ? `color-mix(in srgb, var(--chart) ${Math.round(15 + (v / max) * 85)}%, var(--card))` : 'var(--card-2)' }} />
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="mt-2 flex items-center gap-2 text-xs text-muted" aria-hidden="true">
+        Fewer
+        <span className="h-2.5 w-24 rounded-full" style={{ background: 'linear-gradient(90deg, color-mix(in srgb, var(--chart) 15%, var(--card)), var(--chart))' }} />
+        More orders
+      </div>
+    </div>
+  )
+}

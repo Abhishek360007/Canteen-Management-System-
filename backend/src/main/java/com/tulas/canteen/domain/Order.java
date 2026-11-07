@@ -136,6 +136,8 @@ public class Order {
     public String getCancelReason() { return cancelReason; }
     public void setCancelReason(String cancelReason) { this.cancelReason = cancelReason; }
     public Instant getCreatedAt() { return createdAt; }
+    /** Only for generating demo history. */
+    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
     public Instant getReadyAt() { return readyAt; }
     public void setReadyAt(Instant readyAt) { this.readyAt = readyAt; }
     public Instant getClosedAt() { return closedAt; }

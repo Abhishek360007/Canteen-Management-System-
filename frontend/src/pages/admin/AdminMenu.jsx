@@ -19,8 +19,11 @@ export default function AdminMenu() {
   const load = useCallback(() => api('/api/menu').then(setMenu).catch((e) => setError(e.message)), [])
   useEffect(() => { load() }, [load])
 
+  const [recipe, setRecipe] = useState([])
   const open = (item) => {
     setFormError(null)
+    setRecipe([])
+    if (item) api(`/api/admin/menu/${item.id}/recipe`).then(setRecipe).catch(() => {})
     setEdit(item ? {
       ...item, description: item.description || '', imageUrl: item.imageUrl || '', emoji: item.emoji || '🍽️',
       stockToday: item.stockToday ?? '', defaultStock: item.defaultStock ?? '',
@@ -34,7 +37,10 @@ export default function AdminMenu() {
     const num = (v) => (v === '' || v === null ? null : Number(v))
     const body = { ...edit, price: Number(edit.price), stockToday: num(edit.stockToday), defaultStock: num(edit.defaultStock), prepMinutes: Number(edit.prepMinutes) }
     try {
-      await api(edit.id ? `/api/admin/menu/${edit.id}` : '/api/admin/menu', { method: edit.id ? 'PUT' : 'POST', body })
+      const saved = await api(edit.id ? `/api/admin/menu/${edit.id}` : '/api/admin/menu', { method: edit.id ? 'PUT' : 'POST', body })
+      const lines = recipe.filter((r) => r.name.trim() && Number(r.perPlate) > 0)
+        .map((r) => ({ name: r.name.trim(), unit: r.unit.trim() || 'kg', perPlate: Number(r.perPlate) }))
+      await api(`/api/admin/menu/${saved.id}/recipe`, { method: 'PUT', body: lines })
       toast(edit.id ? 'Dish updated' : 'Dish added', 'good')
       setEdit(null)
       load()
@@ -145,6 +151,32 @@ export default function AdminMenu() {
             <div className="flex items-center justify-between rounded-xl bg-card-2 p-3">
               <span className="text-sm font-medium">On today's menu</span>
               <Toggle checked={edit.available} onChange={(v) => setEdit({ ...edit, available: v })} label="On today's menu" />
+            </div>
+            <div className="rounded-xl border border-line p-3">
+              <p className="text-sm font-medium">Recipe per plate <span className="font-normal text-muted">(optional, for the ingredient forecast)</span></p>
+              <div className="mt-2 space-y-2">
+                {recipe.map((r, i) => (
+                  <div key={i} className="flex gap-2">
+                    <input value={r.name} placeholder="Rice" maxLength={60} aria-label="Ingredient"
+                      onChange={(e) => setRecipe(recipe.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
+                      className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-card px-2 text-sm outline-none focus:border-brand" />
+                    <input value={r.perPlate} type="number" step="0.001" min="0" placeholder="0.15" aria-label="Quantity per plate"
+                      onChange={(e) => setRecipe(recipe.map((x, j) => (j === i ? { ...x, perPlate: e.target.value } : x)))}
+                      className="h-9 w-20 rounded-lg border border-line bg-card px-2 text-sm outline-none focus:border-brand" />
+                    <select value={r.unit} aria-label="Unit" onChange={(e) => setRecipe(recipe.map((x, j) => (j === i ? { ...x, unit: e.target.value } : x)))}
+                      className="h-9 rounded-lg border border-line bg-card px-1 text-sm">
+                      {['kg', 'L', 'pcs', 'g', 'ml'].map((u) => <option key={u}>{u}</option>)}
+                    </select>
+                    <button type="button" onClick={() => setRecipe(recipe.filter((_, j) => j !== i))} className="px-1 text-bad" aria-label="Remove ingredient">
+                      <Trash2 className="size-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {recipe.length < 20 && (
+                <button type="button" onClick={() => setRecipe([...recipe, { name: '', unit: 'kg', perPlate: '' }])}
+                  className="mt-2 text-sm font-semibold text-brand">+ Add ingredient</button>
+              )}
             </div>
             <ErrorNote>{formError}</ErrorNote>
             <Button type="submit" className="w-full" loading={busy}>{edit.id ? 'Save changes' : 'Add dish'}</Button>

@@ -42,7 +42,9 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class,
-            MissingServletRequestParameterException.class})
+            MissingServletRequestParameterException.class,
+            org.springframework.web.method.annotation.HandlerMethodValidationException.class,
+            jakarta.validation.ConstraintViolationException.class})
     public ResponseEntity<Map<String, Object>> unreadable(Exception e) {
         return body(HttpStatus.BAD_REQUEST, "Invalid request");
     }

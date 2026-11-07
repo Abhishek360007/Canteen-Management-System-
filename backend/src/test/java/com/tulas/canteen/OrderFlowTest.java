@@ -45,6 +45,9 @@ class OrderFlowTest {
     @Autowired CounterService counterService;
     @Autowired DailyCounterRepository counterRepo;
     @Autowired com.tulas.canteen.service.RecommendationService recommender;
+    @Autowired com.tulas.canteen.repo.UserRepository userRepo;
+    @Autowired com.tulas.canteen.repo.MenuItemRepository menuRepo;
+    @Autowired com.tulas.canteen.repo.OrderRepository orderRepo;
 
     @BeforeEach
     void openAllDay() {
@@ -345,6 +348,68 @@ class OrderFlowTest {
     private static JsonNode dish(JsonNode menu, long id) {
         for (JsonNode m : menu) if (m.get("id").asLong() == id) return m;
         throw new AssertionError("No dish " + id);
+    }
+
+    /**
+     * Four weeks of history: Rajma Chawal sells 20 plates on the target's weekday and 6 on other days.
+     * Forecast = 0.6 × weekday average (20) + 0.4 × 7-day weighted trend (7.65) = 15.06 → 17 plates with 10% margin.
+     */
+    @Test
+    void forecastFollowsTheWeeklyPatternAndScalesIngredients() throws Exception {
+        String admin = login("admin@tulas.local", "Admin@123");
+        String kitchen = login("kitchen@tulas.local", "kitchen123");
+        String student = register("history" + UUID.randomUUID() + "@college.edu");
+        var user = userRepo.findById(call(get("/api/auth/me"), student, 200).get("id").asLong()).orElseThrow();
+        var rajma = menuRepo.findAll().stream().filter(m -> m.getName().equals("Rajma Chawal")).findFirst().orElseThrow();
+
+        LocalDate target = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata")).plusDays(1);
+        for (int back = 28; back >= 1; back--) {
+            LocalDate day = target.minusDays(back);
+            int plates = day.getDayOfWeek() == target.getDayOfWeek() ? 20 : 6;
+            var o = new com.tulas.canteen.domain.Order();
+            o.setUser(user);
+            o.setCode("H-" + (900 + back));
+            o.setOrderDate(day);
+            o.setPaymentMethod(com.tulas.canteen.domain.PaymentMethod.CASH);
+            o.setTotal(rajma.getPrice().multiply(java.math.BigDecimal.valueOf(plates)));
+            o.setOtp("0000");
+            o.setStatus(com.tulas.canteen.domain.OrderStatus.COLLECTED);
+            o.addItem(new com.tulas.canteen.domain.OrderItem(rajma, plates));
+            orderRepo.save(o);
+        }
+
+        JsonNode f = call(get("/api/kitchen/forecast"), kitchen, 200);
+        assertThat(f.get("date").asText()).isEqualTo(target.toString());
+        JsonNode r = null;
+        for (JsonNode d : f.get("dishes")) if (d.get("name").asText().equals("Rajma Chawal")) r = d;
+        assertThat(r).isNotNull();
+        assertThat(r.get("predicted").asDouble()).isBetween(14.9, 15.2);
+        assertThat(r.get("recommendedPlates").asInt()).isEqualTo(17);
+        assertThat(r.get("basis").asText()).startsWith("Last 4");
+        assertThat(r.get("low").asInt()).isLessThanOrEqualTo(15);
+        assertThat(r.get("high").asInt()).isGreaterThanOrEqualTo(16);
+        // Rajma (0.07 kg per plate) is only used in this dish: 17 × 0.07 = 1.19 kg.
+        JsonNode rajmaNeed = null;
+        for (JsonNode i : f.get("ingredients")) if (i.get("name").asText().equals("Rajma")) rajmaNeed = i;
+        assertThat(rajmaNeed).isNotNull();
+        assertThat(rajmaNeed.get("quantity").decimalValue()).isEqualByComparingTo("1.19");
+
+        JsonNode acc = call(get("/api/admin/insights/accuracy"), admin, 200);
+        assertThat(acc.get("days").size()).isGreaterThanOrEqualTo(7);
+        assertThat(call(get("/api/admin/insights/peaks"), admin, 200).get("avgOrders").size()).isEqualTo(7);
+        assertThat(call(get("/api/admin/insights/sellers"), admin, 200).get("best").toString()).contains("Rajma Chawal");
+        call(get("/api/admin/insights/accuracy"), kitchen, 403); // admin only
+
+        // Apply: Rajma's daily plates become the recommendation.
+        call(post("/api/admin/insights/forecast/apply"), admin, 200);
+        assertThat(menuRepo.findById(rajma.getId()).orElseThrow().getDefaultStock()).isEqualTo(17);
+
+        // Recipes can be edited.
+        call(put("/api/admin/menu/" + rajma.getId() + "/recipe")
+                .content("[{\"name\":\"Rajma\",\"unit\":\"kg\",\"perPlate\":0.1}]"), admin, 200);
+        assertThat(call(get("/api/admin/menu/" + rajma.getId() + "/recipe"), admin, 200).size()).isEqualTo(1);
+        call(put("/api/admin/menu/" + rajma.getId() + "/recipe")
+                .content("[{\"name\":\"\",\"unit\":\"kg\",\"perPlate\":0.1}]"), admin, 400);
     }
 
     @Test
