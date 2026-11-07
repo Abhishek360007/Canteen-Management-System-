@@ -20,6 +20,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.security.SecureRandom;
 
 /**
  * Creates the admin account on first start. With app.seed-demo=true (the default for local runs)
@@ -58,7 +59,19 @@ public class DataSeeder implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         settings.get();
         if (!users.existsByEmailIgnoreCase(adminEmail)) {
-            auth.createUser(adminName, adminEmail, adminPassword, null, Role.ADMIN);
+            String password = adminPassword;
+            if (password == null || password.isBlank()) {
+                password = randomPassword();
+                log.warn("""
+
+                        ==============================================================
+                         ADMIN_PASSWORD was not set, so a random one was generated.
+                         Admin login:  {}
+                         Password:     {}
+                         Log in and change it under Account. This is shown only once.
+                        ==============================================================""", adminEmail, password);
+            }
+            auth.createUser(adminName, adminEmail, password, null, Role.ADMIN);
             log.info("Created admin account {}", adminEmail);
         }
         if (!seedDemo || menu.count() > 0) return;
@@ -88,6 +101,14 @@ public class DataSeeder implements ApplicationRunner {
         announcements.save(a);
 
         log.info("Demo data added: student@tulas.local / student123, kitchen@tulas.local / kitchen123");
+    }
+
+    private static String randomPassword() {
+        String chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+        SecureRandom r = new SecureRandom();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 14; i++) sb.append(chars.charAt(r.nextInt(chars.length())));
+        return sb.toString();
     }
 
     private void dish(String name, String desc, String price, Category cat, boolean veg, String emoji,

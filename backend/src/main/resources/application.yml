@@ -21,16 +21,19 @@ spring:
     async:
       request-timeout: -1
 
+# Secure by default: no well-known secrets. If JWT_SECRET is empty a random one is generated at
+# start-up (everyone is logged out on restart). If ADMIN_PASSWORD is empty, a random admin password
+# is generated on first start and printed once in the log.
 app:
   jwt:
-    secret: ${JWT_SECRET:dev-only-secret-change-me-tulas-canteen-0123456789abcdef}
+    secret: ${JWT_SECRET:}
     expiry-hours: ${JWT_EXPIRY_HOURS:72}
   cors-origins: ${CORS_ORIGINS:http://localhost:5173}
   zone: Asia/Kolkata
-  seed-demo: ${SEED_DEMO:true}
+  seed-demo: ${SEED_DEMO:false}
   admin:
     email: ${ADMIN_EMAIL:admin@tulas.local}
-    password: ${ADMIN_PASSWORD:Admin@123}
+    password: ${ADMIN_PASSWORD:}
     name: ${ADMIN_NAME:Canteen Admin}
 
 springdoc:

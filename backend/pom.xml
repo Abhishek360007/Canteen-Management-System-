@@ -20,6 +20,8 @@
     <properties>
         <java.version>21</java.version>
         <jjwt.version>0.12.6</jjwt.version>
+        <!-- "mvn spring-boot:run" starts in demo mode; override with -Dspring-boot.run.profiles=mysql etc. -->
+        <spring-boot.run.profiles>demo</spring-boot.run.profiles>
     </properties>
 
     <dependencies>

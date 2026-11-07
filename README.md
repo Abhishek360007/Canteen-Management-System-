@@ -98,7 +98,7 @@ npm install
 npm run dev
 ```
 
-The first start creates demo data (turn it off with `SEED_DEMO=false`):
+`mvn spring-boot:run` starts in **demo mode**, which adds a sample menu and these logins:
 
 | Role | Email | Password |
 |---|---|---|
@@ -108,12 +108,15 @@ The first start creates demo data (turn it off with `SEED_DEMO=false`):
 
 To try it on a phone, connect to the same Wi-Fi and open `http://<your-PC-IP>:5173`.
 
-**Run with MySQL instead of H2:**
+**Run the demo with MySQL instead of H2:**
 
 ```bash
 cd backend
-SPRING_PROFILES_ACTIVE=mysql DB_USERNAME=root DB_PASSWORD=yourpassword mvn spring-boot:run
+DB_USERNAME=root DB_PASSWORD=yourpassword mvn spring-boot:run -Dspring-boot.run.profiles=demo,mysql
 ```
+
+Run any other way (the jar, Docker) and demo mode is **off**: there are no demo logins and no
+known passwords (see [Security defaults](#security-defaults)).
 
 **Run the tests:**
 
@@ -133,16 +136,27 @@ The app runs on `http://localhost:8080`, with the React app served by the same s
 
 ## Configuration
 
-| Variable | Purpose | Default (dev only) |
+| Variable | Purpose | If not set |
 |---|---|---|
-| `JWT_SECRET` | Signs login tokens. Use 32+ random characters. | dev value |
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Admin account created on first start | `admin@tulas.local` / `Admin@123` |
-| `SPRING_PROFILES_ACTIVE` | `mysql` to use MySQL | H2 |
+| `JWT_SECRET` | Signs login tokens. Use 32+ random characters. | Random on every start (everyone is logged out on restart) |
+| `ADMIN_EMAIL` | Admin account created on first start | `admin@tulas.local` |
+| `ADMIN_PASSWORD` | Password for that admin account | Random, printed once in the server log |
+| `SPRING_PROFILES_ACTIVE` | `mysql` to use MySQL | Built-in H2 database |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | MySQL connection | `localhost`, `3306`, `tulas_canteen` |
-| `SEED_DEMO` | Add the demo menu and logins | `true` |
+| `SEED_DEMO` | Add the demo menu and logins | `false` (`true` in demo mode) |
 | `CORS_ORIGINS` | Allowed frontend origins (comma-separated) | `http://localhost:5173` |
 
-**Before going live:** set a strong `ADMIN_PASSWORD` and `JWT_SECRET`, set `SEED_DEMO=false`, and serve the site over HTTPS.
+### Security defaults
+
+The app is safe by default, with no well-known passwords outside demo mode:
+
+- If `ADMIN_PASSWORD` isn't set, a random admin password is generated on the first start and printed once
+  in the server log. Log in with it and change it under **Account**.
+- If `JWT_SECRET` isn't set, a random secret is used. Logins still work, but everyone is logged out when the
+  server restarts, so set a fixed `JWT_SECRET` for real use.
+- Demo data and demo logins appear only in demo mode (`mvn spring-boot:run`).
+
+When you go live, also serve the site over HTTPS.
 
 ## Project structure
 
@@ -179,3 +193,7 @@ The full interactive docs are at `/swagger-ui.html`.
 ## Author
 
 **Abhishek Raj**: [GitHub](https://github.com/Abhishek360007)
+
+## License
+
+[MIT](LICENSE) © 2026 Abhishek Raj
