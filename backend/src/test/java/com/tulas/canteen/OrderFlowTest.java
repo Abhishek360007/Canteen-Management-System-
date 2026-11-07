@@ -182,6 +182,60 @@ class OrderFlowTest {
         assertThat(counterRepo.existsById(day)).isTrue();
     }
 
+    /** Every admin list page, with and without its optional filters (empty filters broke on PostgreSQL). */
+    @Test
+    void adminListPagesWorkWithAndWithoutFilters() throws Exception {
+        String admin = login("admin@tulas.local", "Admin@123");
+        register("findme" + UUID.randomUUID() + "@college.edu");
+
+        assertThat(call(get("/api/admin/users"), admin, 200).get("items").size()).isGreaterThan(0);
+        assertThat(call(get("/api/admin/users?role=STUDENT"), admin, 200).get("items").size()).isGreaterThan(0);
+        assertThat(call(get("/api/admin/users?q=findme"), admin, 200).get("items").size()).isEqualTo(1);
+        assertThat(call(get("/api/admin/users?q=FINDME&role=STUDENT"), admin, 200).get("items").size()).isEqualTo(1);
+        assertThat(call(get("/api/admin/users?q=findme&role=STAFF"), admin, 200).get("items").size()).isZero();
+        assertThat(call(get("/api/admin/users?q=TU-CSE"), admin, 200).get("items").size()).isEqualTo(1); // roll number
+
+        call(get("/api/admin/audit"), admin, 200);
+        call(get("/api/admin/audit?q=recharge"), admin, 200);
+
+        call(get("/api/admin/orders"), admin, 200);
+        call(get("/api/admin/orders?status=COLLECTED"), admin, 200);
+        mvc.perform(get("/api/admin/orders.csv").header("Authorization", "Bearer " + admin)).andExpect(status().isOk());
+        mvc.perform(get("/api/admin/orders.csv?status=CANCELLED").header("Authorization", "Bearer " + admin)).andExpect(status().isOk());
+
+        call(get("/api/admin/topups"), admin, 200);
+        call(get("/api/admin/topups?status=PENDING"), admin, 200);
+        call(get("/api/admin/dashboard"), admin, 200);
+        call(get("/api/admin/announcements"), admin, 200);
+        call(get("/api/admin/settings"), admin, 200);
+    }
+
+    /** Every student and kitchen screen's data loads (so a database-specific query bug can't hide on a page). */
+    @Test
+    void studentAndKitchenPagesLoad() throws Exception {
+        String student = register("pages" + UUID.randomUUID() + "@college.edu");
+        String kitchen = login("kitchen@tulas.local", "kitchen123");
+        long dish = idOf(call(get("/api/menu"), student, 200), "Masala Chai");
+
+        call(get("/api/auth/me"), student, 200);
+        call(get("/api/canteen"), student, 200);
+        call(get("/api/announcements"), student, 200);
+        call(get("/api/orders"), student, 200);
+        call(get("/api/wallet"), student, 200);
+        call(get("/api/wallet/spending"), student, 200);
+        call(get("/api/wallet/topups"), student, 200);
+        call(put("/api/favourites/" + dish), student, 200);
+        assertThat(idOf(call(get("/api/menu"), student, 200), "Masala Chai")).isEqualTo(dish);
+        call(delete("/api/favourites/" + dish), student, 200);
+        call(put("/api/auth/me").content("{\"name\":\"Renamed Student\",\"phone\":\"9876500000\"}"), student, 200);
+
+        call(get("/api/kitchen/queue"), kitchen, 200);
+        call(get("/api/kitchen/today"), kitchen, 200);
+        call(get("/api/kitchen/summary"), kitchen, 200);
+        call(get("/api/kitchen/summary?day=2020-01-01"), kitchen, 200);
+        call(put("/api/kitchen/menu/" + dish + "/stock").content("{\"stockToday\":null,\"available\":true}"), kitchen, 200);
+    }
+
     @Test
     void standardMenuImportSkipsExistingDishes() throws Exception {
         String admin = login("admin@tulas.local", "Admin@123");

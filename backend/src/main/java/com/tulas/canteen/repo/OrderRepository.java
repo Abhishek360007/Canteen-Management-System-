@@ -32,11 +32,16 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("""
             select o from Order o
             where o.orderDate between :from and :to
-              and (:status is null or o.status = :status)
+              and o.status in :statuses
             order by o.createdAt desc
             """)
     List<Order> findForReport(@Param("from") LocalDate from, @Param("to") LocalDate to,
-                              @Param("status") OrderStatus status);
+                              @Param("statuses") Collection<OrderStatus> statuses);
+
+    /** {@code status} null means all statuses. (No nullable query parameters: PostgreSQL can't type them.) */
+    default List<Order> findForReport(LocalDate from, LocalDate to, OrderStatus status) {
+        return findForReport(from, to, status == null ? List.of(OrderStatus.values()) : List.of(status));
+    }
 
     @EntityGraph(attributePaths = {"items", "user"})
     Optional<Order> findByOrderDateAndCodeIgnoreCase(LocalDate date, String code);

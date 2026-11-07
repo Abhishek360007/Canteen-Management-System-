@@ -38,7 +38,10 @@ public class PublicController {
     @GetMapping("/health")
     public java.util.Map<String, String> health() {
         settings.view();
-        return java.util.Map.of("status", "ok");
+        // Render sets RENDER_GIT_COMMIT, so you can see which commit is live.
+        String commit = System.getenv("RENDER_GIT_COMMIT");
+        return java.util.Map.of("status", "ok",
+                "version", commit == null || commit.length() < 7 ? "local" : commit.substring(0, 7));
     }
 
     @GetMapping("/menu")

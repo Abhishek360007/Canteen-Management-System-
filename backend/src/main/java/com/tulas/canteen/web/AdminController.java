@@ -14,6 +14,7 @@ import com.tulas.canteen.dto.OrderDtos.OrderView;
 import com.tulas.canteen.repo.AnnouncementRepository;
 import com.tulas.canteen.repo.AuditLogRepository;
 import com.tulas.canteen.repo.OrderRepository;
+import com.tulas.canteen.repo.Search;
 import com.tulas.canteen.repo.UserRepository;
 import com.tulas.canteen.security.AuthUser;
 import com.tulas.canteen.service.*;
@@ -84,8 +85,8 @@ public class AdminController {
     public Map<String, Object> users(@RequestParam(required = false) String q,
                                      @RequestParam(required = false) Role role,
                                      @RequestParam(defaultValue = "0") int page) {
-        String query = q == null || q.isBlank() ? null : q.trim();
-        Page<User> p = users.search(query, role, PageRequest.of(Math.max(page, 0), 25));
+        List<Role> roles = role == null ? List.of(Role.values()) : List.of(role);
+        Page<User> p = users.search(Search.pattern(q), roles, PageRequest.of(Math.max(page, 0), 25));
         return Map.of("items", p.getContent().stream().map(UserView::of).toList(),
                 "page", p.getNumber(), "totalPages", p.getTotalPages(), "total", p.getTotalElements());
     }
@@ -231,8 +232,7 @@ public class AdminController {
     @Transactional(readOnly = true)
     public Map<String, Object> auditLog(@RequestParam(required = false) String q,
                                         @RequestParam(defaultValue = "0") int page) {
-        String query = q == null || q.isBlank() ? null : q.trim();
-        var p = auditLogs.search(query, PageRequest.of(Math.max(page, 0), 50));
+        var p = auditLogs.search(Search.pattern(q), PageRequest.of(Math.max(page, 0), 50));
         return Map.of("items", p.getContent().stream().map(AuditView::of).toList(),
                 "page", p.getNumber(), "totalPages", p.getTotalPages());
     }

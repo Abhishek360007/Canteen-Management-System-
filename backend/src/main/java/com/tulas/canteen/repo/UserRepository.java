@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User, Long> {
@@ -20,15 +21,19 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     long countByRole(Role role);
 
+    /**
+     * No nullable parameters on purpose: PostgreSQL can't type a null bound into "? is null".
+     * Callers pass a ready LIKE pattern ("%" for everything, see {@code Search.pattern}) and the roles to include.
+     */
     @Query("""
             select u from User u
-            where (:role is null or u.role = :role)
-              and (:q is null or lower(u.name) like lower(concat('%', :q, '%'))
-                   or lower(u.email) like lower(concat('%', :q, '%'))
-                   or lower(u.rollNo) like lower(concat('%', :q, '%')))
+            where u.role in :roles
+              and (lower(u.name) like :pattern escape '\\'
+                   or lower(u.email) like :pattern escape '\\'
+                   or lower(coalesce(u.rollNo, '')) like :pattern escape '\\')
             order by u.createdAt desc
             """)
-    Page<User> search(@Param("q") String q, @Param("role") Role role, Pageable pageable);
+    Page<User> search(@Param("pattern") String pattern, @Param("roles") Collection<Role> roles, Pageable pageable);
 
     /** Atomic debit: only succeeds if the balance covers the amount. Returns rows changed (0 or 1). */
     @Modifying(flushAutomatically = true)

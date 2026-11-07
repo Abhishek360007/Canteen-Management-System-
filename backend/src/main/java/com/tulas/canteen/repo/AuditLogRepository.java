@@ -9,12 +9,14 @@ import org.springframework.data.repository.query.Param;
 
 public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
 
+    /** {@code pattern} is a ready lower-case LIKE pattern; "%" lists everything (see {@code Search.pattern}). */
     @Query("""
             select a from AuditLog a
-            where (:q is null or lower(a.actorName) like lower(concat('%', :q, '%'))
-                   or lower(a.action) like lower(concat('%', :q, '%'))
-                   or lower(a.target) like lower(concat('%', :q, '%')))
+            where lower(a.actorName) like :pattern escape '\\'
+               or lower(a.action) like :pattern escape '\\'
+               or lower(coalesce(a.target, '')) like :pattern escape '\\'
+               or lower(coalesce(a.details, '')) like :pattern escape '\\'
             order by a.createdAt desc, a.id desc
             """)
-    Page<AuditLog> search(@Param("q") String q, Pageable pageable);
+    Page<AuditLog> search(@Param("pattern") String pattern, Pageable pageable);
 }
