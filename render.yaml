@@ -18,6 +18,12 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      - key: RAZORPAY_KEY_ID
+        sync: false # rzp_test_... (test) or rzp_live_... (real money)
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false # same secret as the webhook in Razorpay Dashboard → Settings → Webhooks
       - key: SEED_DEMO
         value: "false"
       - key: TZ

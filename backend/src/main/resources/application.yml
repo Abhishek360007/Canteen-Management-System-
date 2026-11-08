@@ -38,6 +38,11 @@ app:
   cors-origins: ${CORS_ORIGINS:http://localhost:5173}
   zone: Asia/Kolkata
   seed-demo: ${SEED_DEMO:false}
+  # Online payment. Set these on the server (never in the code): Test keys start rzp_test_, Live keys rzp_live_.
+  razorpay:
+    key-id: ${RAZORPAY_KEY_ID:}
+    key-secret: ${RAZORPAY_KEY_SECRET:}
+    webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:}
   admin:
     email: ${ADMIN_EMAIL:admin@tulas.local}
     password: ${ADMIN_PASSWORD:}

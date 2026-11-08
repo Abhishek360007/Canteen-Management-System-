@@ -39,11 +39,13 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/auth/register", "/api/auth/login", "/api/health").permitAll()
+                        // Razorpay's servers call this; it is trusted only via its HMAC signature.
+                        .requestMatchers(HttpMethod.POST, "/api/payments/razorpay/webhook").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/kitchen/**").hasAnyRole("STAFF", "ADMIN")
                         .requestMatchers("/api/orders/**", "/api/wallet/**", "/api/favourites/**",
-                                "/api/rewards/**", "/api/recommendations/**").hasRole("STUDENT")
+                                "/api/rewards/**", "/api/recommendations/**", "/api/payments/**").hasRole("STUDENT")
                         .requestMatchers("/api/**").authenticated()
                         // Anything else is the built React app (when served from the same jar).
                         .anyRequest().permitAll())

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import TopupCard from '../../components/TopupCard'
+import OnlineTopup from '../../components/OnlineTopup'
 import { ArrowDownLeft, ArrowUpRight, ChevronRight, Gift, RotateCcw, Wallet as WalletIcon } from 'lucide-react'
 import { api, dateOf, rupees, timeOf } from '../../api'
 import { useLive } from '../../context/LiveContext'
@@ -17,6 +18,8 @@ export default function WalletPage() {
   const [wallet, setWallet] = useState(null)
   const [spend, setSpend] = useState(null)
   const [points, setPoints] = useState(null)
+  const [payCfg, setPayCfg] = useState(null)
+  useEffect(() => { api('/api/payments/config').then(setPayCfg).catch(() => {}) }, [])
   const [error, setError] = useState(null)
 
   const load = useCallback(() => {
@@ -38,7 +41,9 @@ export default function WalletPage() {
         <p className="text-sm font-medium opacity-85">Available balance</p>
         <p className="font-display text-4xl font-extrabold">{rupees(wallet.balance)}</p>
         <p className="mt-3 text-sm opacity-85">
-          {canteen?.upiId ? 'Add money with UPI below, or recharge at the canteen office.' : 'Recharge at the canteen office with cash or UPI. It shows up here instantly.'}
+          {payCfg?.online ? 'Add money online below (UPI, cards, netbanking), or at the canteen office.'
+            : canteen?.upiId ? 'Add money with UPI below, or recharge at the canteen office.'
+              : 'Recharge at the canteen office with cash or UPI. It shows up here instantly.'}
         </p>
       </div>
 
@@ -51,6 +56,7 @@ export default function WalletPage() {
         <ChevronRight className="size-5 text-muted" />
       </Link>
 
+      <OnlineTopup config={payCfg} onDone={load} />
       <TopupCard canteen={canteen} />
 
       {spend && (

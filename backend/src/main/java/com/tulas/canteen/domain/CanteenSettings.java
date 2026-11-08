@@ -47,6 +47,22 @@ public class CanteenSettings {
     @Column(length = 60)
     private String upiName;
 
+    // ---- online payment (Razorpay); nullable so the columns can be added to an existing database
+
+    /** Admin switch for online payment (it also needs Razorpay keys on the server). null = on. */
+    private Boolean onlinePaymentsEnabled;
+
+    /** Smallest / largest wallet top-up in rupees. null = 50 / 5000. */
+    private Integer minTopup;
+    private Integer maxTopup;
+
+    public boolean isOnlinePaymentsEnabled() { return onlinePaymentsEnabled == null || onlinePaymentsEnabled; }
+    public void setOnlinePaymentsEnabled(boolean v) { this.onlinePaymentsEnabled = v; }
+    public int getMinTopup() { return minTopup == null ? 50 : minTopup; }
+    public void setMinTopup(int v) { this.minTopup = v; }
+    public int getMaxTopup() { return maxTopup == null ? 5000 : maxTopup; }
+    public void setMaxTopup(int v) { this.maxTopup = v; }
+
     public String getUpiId() { return upiId; }
     public void setUpiId(String upiId) { this.upiId = upiId; }
     public String getUpiName() { return upiName; }

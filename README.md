@@ -50,6 +50,8 @@ by checking the student's order number and 4-digit pickup code (or scanning thei
 - Phone notification and vibration when the food is ready
 - Cancel before cooking starts (instant wallet refund); rate the order after collecting
 - Wallet page with balance, full transaction history and monthly spending
+- **Pay online with Razorpay** (UPI, cards, netbanking, wallets): add money to the wallet instantly, or at checkout
+  "Pay ₹X online & place order" pays just the amount the wallet is short
 - **Add money with UPI**: pay the canteen's UPI ID from any UPI app (one tap on phones, QR on laptops), then
   send the UPI reference; it's added to the wallet once an admin confirms the payment
 - **Smart recommendations**: "Recommended for you", "Order again", "Trending this week", add-ons in the cart
@@ -77,6 +79,8 @@ by checking the student's order number and 4-digit pickup code (or scanning thei
 - User management: search, **recharge wallets**, see wallet history, block or unblock, create kitchen staff logins,
   **reset a forgotten password** (temporary password) and **log someone out on all devices**
 - **UPI top-up approvals**: each request shows the amount and UPI reference to check before approving or rejecting
+- **Payments**: switch online payment on/off, top-up limits, Razorpay test/live status, webhook setup and a list of
+  every online payment for reconciliation
 - **Activity log**: who recharged, approved, refunded, blocked, reset a password or changed the menu, and when
 - All orders with date and status filters, plus **CSV export** for Excel
 - Announcements shown at the top of every student's screen
@@ -117,9 +121,13 @@ by checking the student's order number and 4-digit pickup code (or scanning thei
   servers. Tested end to end: Chrome subscribed through Google's push service and Google accepted the message.
 - **Upgrade-safe**: moving from the single-canteen version puts existing dishes, orders and staff into the main
   canteen automatically, and order numbering continues where it left off.
+- **Online payments are safe by design**: the amount is fixed on the server, every payment is verified with
+  Razorpay's HMAC-SHA256 signature (constant-time check), a signed webhook credits the wallet even if the student
+  closes the app mid-payment, and a payment is credited exactly once however many confirmations arrive.
+  Razorpay keys live only in server environment variables. Tested against a fake Razorpay API on H2 and PostgreSQL.
 - **No lost updates**: saving an unrelated change (like blocking a user) never overwrites a wallet balance, points
   total or plates-left that changed at the same moment.
-- Tests (46) run on both H2 and a real PostgreSQL server, including concurrency, forecasting and multi-canteen.
+- Tests (54) run on both H2 and a real PostgreSQL server, including concurrency, forecasting and multi-canteen.
 - Swagger API docs, an integration test for the whole order flow, light and dark mode, and a mobile-first layout.
 
 ## Tech stack
@@ -208,6 +216,8 @@ The app runs on `http://localhost:8080`, with the React app served by the same s
 | `SPRING_PROFILES_ACTIVE` | `mysql` to use MySQL | Built-in H2 database |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | MySQL connection | `localhost`, `3306`, `tulas_canteen` |
 | `SEED_DEMO` | Add the demo menu and logins | `false` (`true` in demo mode) |
+| `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` | Online payment (`rzp_test_…` = test mode, `rzp_live_…` = real money) | Online payment off |
+| `RAZORPAY_WEBHOOK_SECRET` | Verifies Razorpay's webhook (credits the wallet even if the app is closed mid-payment) | Webhook refused |
 | `CORS_ORIGINS` | Allowed frontend origins (comma-separated) | `http://localhost:5173` |
 
 ### Security defaults

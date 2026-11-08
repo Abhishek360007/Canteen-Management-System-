@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useOutletContext } from 'react-router-dom'
 import { Banknote, Gift, Minus, Plus, ShoppingBag, Trash2, Wallet } from 'lucide-react'
 import { RecRows } from '../../components/Recs'
+import { payOnline } from '../../razorpay'
 import { api, newKey, rupees } from '../../api'
 import { useCart } from '../../context/CartContext'
 import { useCanteens } from '../../context/CanteenContext'
@@ -81,6 +82,25 @@ export default function Cart() {
   const slotList = useMemo(() => slots(canteen?.closeTime), [canteen])
   const short = pay === 'WALLET' && balance !== null && balance < toPay
   const closed = canteen && !canteen.openNow
+
+  // Online payment (Razorpay): when the wallet is short, pay the difference online and then place the order.
+  const [payCfg, setPayCfg] = useState(null)
+  useEffect(() => { api('/api/payments/config').then(setPayCfg).catch(() => {}) }, [])
+  const shortBy = balance === null ? 0 : Math.max(0, Math.round((toPay - balance) * 100) / 100)
+  const payShortfallAndPlace = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const paid = await payOnline({ amount: shortBy, purpose: 'checkout' })
+      if (!paid) return // checkout closed
+      await loadWallet()
+      await place()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const place = async () => {
     setBusy(true)
@@ -164,7 +184,12 @@ export default function Cart() {
             <PayOption active={pay === 'CASH'} onClick={() => setPay('CASH')} icon={Banknote} title="Cash / UPI"
               sub="Pay at the counter" disabled={canteen && !canteen.cashAllowed} />
           </div>
-          {short && <p className="mt-2 text-sm text-bad">Not enough balance. Recharge at the canteen office or pay at the counter.</p>}
+          {short && (
+            <p className="mt-2 text-sm text-bad">
+              {payCfg?.online ? `Your wallet is ${rupees(shortBy)} short. Pay it online below, or choose Cash / UPI at the counter.`
+                : 'Not enough balance. Recharge at the canteen office or pay at the counter.'}
+            </p>
+          )}
         </fieldset>
       </Card>
 
@@ -191,9 +216,18 @@ export default function Cart() {
 
       <div className="mt-4 space-y-3">
         <ErrorNote>{error}</ErrorNote>
-        <Button size="lg" className="w-full" loading={busy} disabled={short || closed} onClick={place}>
-          {closed ? 'Canteen is closed' : `Place order · ${rupees(toPay)}`}
-        </Button>
+        {short && payCfg?.online && !closed ? (
+          <Button size="lg" className="w-full" loading={busy} onClick={payShortfallAndPlace}>
+            Pay {rupees(shortBy)} online & place order
+          </Button>
+        ) : (
+          <Button size="lg" className="w-full" loading={busy} disabled={short || closed} onClick={place}>
+            {closed ? 'Canteen is closed' : `Place order · ${rupees(toPay)}`}
+          </Button>
+        )}
+        {short && payCfg?.online && !closed && payCfg.mode === 'TEST' && (
+          <p className="text-center text-xs text-warn">Test mode: no real money is charged.</p>
+        )}
       </div>
     </>
   )

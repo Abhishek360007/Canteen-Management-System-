@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Store, TrendingUp, Boxes, ChefHat, ChevronRight, History, IndianRupee, Megaphone, ScanLine, Settings, Smartphone, User } from 'lucide-react'
+import { CreditCard, Store, TrendingUp, Boxes, ChefHat, ChevronRight, History, IndianRupee, Megaphone, ScanLine, Settings, Smartphone, User } from 'lucide-react'
 import { api } from '../../api'
 import { useLive } from '../../context/LiveContext'
 import { Card, PageTitle } from '../../components/ui'
@@ -17,6 +17,7 @@ export default function More() {
       ['/admin/insights', 'Forecast & insights', TrendingUp],
     ]],
     ['Money', [
+      ['/admin/payments', 'Online payments (Razorpay)', CreditCard],
       ['/admin/topups', 'UPI top-up requests', Smartphone, pending],
       ['/admin/activity', 'Activity log', History],
     ]],
