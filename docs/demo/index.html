@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tula's Canteen Demo</title>
+<meta name="description" content="A captioned walkthrough of Tula's Canteen: order ahead, a live kitchen board, pickup codes, reviews, complaints with refunds, forecasts and more.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23D9480F'/%3E%3Cpath d='M14 30h36a18 18 0 0 1-36 0z' fill='%23FFF4E6'/%3E%3Cpath d='M20 26c0-6 4-6 4-11M30 26c0-6 4-6 4-11M40 26c0-6 4-6 4-11' stroke='%23FFF4E6' stroke-width='3' stroke-linecap='round' fill='none'/%3E%3Crect x='12' y='46' width='40' height='4' rx='2' fill='%23FFF4E6'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #140c08;
+    --text: #ffffff;
+    --muted: rgba(255, 237, 225, 0.72);
+    --faint: rgba(255, 237, 225, 0.5);
+    --accent: #fdba74;
+    --card: rgba(255, 255, 255, 0.05);
+    --border: rgba(255, 255, 255, 0.1);
+    --primary: #d9480f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    font-family: Inter, system-ui, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(60% 40% at 10% 0%, rgba(217, 72, 15, 0.35) 0%, transparent 70%),
+      radial-gradient(50% 40% at 100% 100%, rgba(190, 50, 20, 0.3) 0%, transparent 70%),
+      var(--bg);
+    line-height: 1.55;
+  }
+  main { max-width: 1120px; margin: 0 auto; padding: 48px 16px 64px; }
+  .eyebrow { color: var(--accent); font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; font-size: 13px; }
+  h1 { font-size: clamp(32px, 5vw, 52px); letter-spacing: -0.03em; line-height: 1.1; margin: 10px 0 12px; }
+  .lead { color: var(--muted); font-size: 18px; max-width: 760px; }
+  .player {
+    margin: 32px 0 20px;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.8);
+    background: #000;
+  }
+  video { display: block; width: 100%; height: auto; aspect-ratio: 1280 / 720; }
+  .links { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 40px; }
+  .links a {
+    color: var(--text);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card);
+  }
+  .links a.primary { background: var(--primary); border-color: var(--primary); }
+  .links a:hover { border-color: var(--accent); }
+  h2 { font-size: 20px; letter-spacing: -0.015em; margin-bottom: 14px; }
+  ol { list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 10px; }
+  li { display: flex; gap: 12px; align-items: baseline; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); color: var(--muted); font-size: 15px; }
+  li b { color: var(--text); font-weight: 600; }
+  li span { flex-shrink: 0; color: var(--accent); font-weight: 700; font-size: 13px; min-width: 22px; }
+  footer { margin-top: 48px; color: var(--faint); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Product demo · 2 min 28 s</div>
+  <h1>Tula's Canteen</h1>
+  <p class="lead">Students order ahead and skip the queue, the kitchen cooks from a live board and hands food over with a pickup code, and admins see sales, forecasts and feedback. Every step below is captioned in the video.</p>
+
+  <div class="player">
+    <video controls preload="metadata" playsinline poster="demo-preview.gif">
+      <source src="tulas-canteen-demo.mp4" type="video/mp4">
+      Your browser can't play this video. <a href="tulas-canteen-demo.mp4">Download it instead.</a>
+    </video>
+  </div>
+
+  <div class="links">
+    <a class="primary" href="https://github.com/Abhishek360007/Canteen-Management-System-">Source code on GitHub</a>
+    <a href="https://tulas-canteen.onrender.com">Live app</a>
+    <a href="../Tulas-Canteen-Project-Guide.pdf">Project guide (PDF)</a>
+  </div>
+
+  <h2>What the video shows</h2>
+  <ol>
+    <li><span>01</span><div><b>Secure sign-in</b>: role-based accounts with JWT</div></li>
+    <li><span>02</span><div><b>Today's menu</b>: canteens, ratings, reviews and stock badges</div></li>
+    <li><span>03</span><div><b>Order ahead</b>: pickup time, wallet, reward points, smart add-ons</div></li>
+    <li><span>04</span><div><b>Pickup pass</b>: order number, 4-digit code, QR and live status</div></li>
+    <li><span>05</span><div><b>Kitchen board</b>: live orders, start cooking, mark ready</div></li>
+    <li><span>06</span><div><b>Hand-over</b> with the student's pickup code</div></li>
+    <li><span>07</span><div><b>Dish reviews</b> and reporting a problem</div></li>
+    <li><span>08</span><div><b>Complaints</b>: reply in a thread and refund to the wallet</div></li>
+    <li><span>09</span><div><b>Dashboard and forecasts</b>: sales, peak hours, plates and ingredients</div></li>
+    <li><span>10</span><div><b>Many canteens</b>, one campus wallet</div></li>
+  </ol>
+
+  <footer>Built by Abhishek Raj · Java 21 · Spring Boot 3.5 · React 19 · Tailwind CSS 4 · PostgreSQL (Neon) · Server-Sent Events · Web Push · Razorpay</footer>
+</main>
+</body>
+</html>

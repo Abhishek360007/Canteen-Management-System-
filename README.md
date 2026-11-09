@@ -18,6 +18,27 @@ by checking the student's order number and 4-digit pickup code (or scanning thei
 
 </div>
 
+**🎬 Demo video:** [Watch the 2½-minute walkthrough](https://abhishek360007.github.io/Canteen-Management-System-/demo/) (captioned, end to end)
+**🌐 Live demo:** [tulas-canteen.onrender.com](https://tulas-canteen.onrender.com) (free hosting: the first visit after a quiet period can take about a minute to wake up)
+**📘 Project guide:** [Tulas-Canteen-Project-Guide.pdf](docs/Tulas-Canteen-Project-Guide.pdf), a 30-page walkthrough of every feature, the smart parts, the architecture and how to present the project
+
+[![Demo: the live kitchen board and hand-over with a pickup code](docs/demo/demo-preview.gif)](https://abhishek360007.github.io/Canteen-Management-System-/demo/)
+
+## 🎬 Demo Video
+
+[**▶ Watch the full demo (2 min 28 s)**](https://abhishek360007.github.io/Canteen-Management-System-/demo/) (or [download the MP4](docs/demo/tulas-canteen-demo.mp4)). Every step is captioned:
+
+1. Secure sign-in with role-based accounts
+2. Today's menu: canteens, ratings, reviews and stock badges
+3. Ordering ahead: pickup time, wallet, reward points and smart add-ons
+4. The pickup pass: order number, 4-digit code, QR and live status
+5. The kitchen's live order board
+6. Hand-over with the student's pickup code
+7. Rating dishes and reporting a problem
+8. Admins replying to a complaint and refunding to the wallet
+9. Dashboard, demand forecast and ingredients
+10. Many canteens, one campus wallet
+
 <p align="center">
   <img src="docs/screenshots/menu.png" width="230" alt="Student menu" />
   <img src="docs/screenshots/cart.png" width="230" alt="Cart with pickup time and payment" />
