@@ -123,7 +123,7 @@ public final class AdminDtos {
 
     public record Dashboard(long ordersToday, BigDecimal revenueToday, long activeNow, long studentCount,
                             BigDecimal walletFloat, double avgRating, long noShowsToday, long cancelledToday,
-                            long pendingTopups,
+                            long pendingTopups, long openComplaints, long flaggedReviews,
                             List<DayPoint> last7Days, List<NamedCount> topItems, List<HourPoint> busyHours) {}
 
     public record DaySummary(LocalDate day, long orders, long collected, long cancelled, long noShows, long pending,

@@ -10,9 +10,13 @@ const ACTIVE = ['PLACED', 'PREPARING', 'READY']
 export default function Orders() {
   const [orders, setOrders] = useState(null)
   const [error, setError] = useState(null)
+  const [issues, setIssues] = useState({})
   const load = useCallback(() => api('/api/orders').then(setOrders).catch((e) => setError(e.message)), [])
-  useEffect(() => { load() }, [load])
+  const loadIssues = useCallback(() => api('/api/orders/complaints')
+    .then((l) => setIssues(Object.fromEntries(l.map((c) => [c.orderId, c])))).catch(() => {}), [])
+  useEffect(() => { load(); loadIssues() }, [load, loadIssues])
   useLive('order', load)
+  useLive('complaint', loadIssues)
 
   if (error) return <ErrorNote>{error}</ErrorNote>
   if (!orders) return <Spinner />
@@ -70,6 +74,7 @@ export default function Orders() {
                     <span className="text-xs text-muted">{dateOf(o.createdAt)}, {timeOf(o.createdAt)}</span>
                   </div>
                   <p className="truncate text-sm text-ink-2">{o.items.map((i) => `${i.quantity}× ${i.name}`).join(', ')}</p>
+                  {issues[o.id] && <IssueTag c={issues[o.id]} />}
                 </div>
                 <div className="text-right">
                   <div className="font-semibold">{rupees(o.total)}</div>
@@ -82,4 +87,11 @@ export default function Orders() {
       )}
     </>
   )
+}
+
+function IssueTag({ c }) {
+  const [cls, label] = c.status === 'RESOLVED' ? ['text-good', c.refundAmount ? `Complaint resolved · ${rupees(c.refundAmount)} refunded` : 'Complaint resolved']
+    : c.status === 'REJECTED' ? ['text-muted', 'Complaint closed']
+      : c.lastFromStaff ? ['text-brand', 'Canteen replied to your complaint'] : ['text-warn', 'Complaint open']
+  return <p className={`text-xs font-semibold ${cls}`}>{label}</p>
 }

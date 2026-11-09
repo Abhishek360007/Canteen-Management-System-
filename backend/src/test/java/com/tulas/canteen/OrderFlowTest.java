@@ -662,6 +662,169 @@ class OrderFlowTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    // ---- complaints and dish reviews
+
+    @Test
+    void complaintThreadEndsWithOneRefundCappedAtWhatWasPaid() throws Exception {
+        String student = register("issue" + UUID.randomUUID() + "@college.edu");
+        String other = register("nosy" + UUID.randomUUID() + "@college.edu");
+        String admin = login("admin@tulas.local", "Admin@123");
+        String kitchen = login("kitchen@tulas.local", "kitchen123");
+        long sid = call(get("/api/auth/me"), student, 200).get("id").asLong();
+        call(post("/api/admin/users/" + sid + "/recharge").content("{\"amount\":500}"), admin, 200);
+        long thali = idOf(call(get("/api/menu"), student, 200), "Veg Thali");
+
+        JsonNode order = call(post("/api/orders").content(orderJson(thali, 2, "WALLET", 0)), student, 201);
+        long oid = order.get("id").asLong();
+        String issue = "{\"category\":\"QUALITY\",\"menuItemIds\":[" + thali + "],\"details\":\"The dal was cold and the rice was hard.\"}";
+        // Not while it's still in the kitchen.
+        call(post("/api/orders/" + oid + "/complaint").content(issue), student, 400);
+        collect(order, kitchen);
+
+        assertThat(call(get("/api/orders/" + oid + "/complaint"), student, 200).isNull()).isTrue();
+        JsonNode c = call(post("/api/orders/" + oid + "/complaint").content(issue), student, 201);
+        long cid = c.get("id").asLong();
+        assertThat(c.get("status").asText()).isEqualTo("OPEN");
+        assertThat(c.get("dishes").asText()).isEqualTo("Veg Thali");
+        assertThat(c.get("maxRefund").decimalValue()).isEqualByComparingTo("180");
+        call(post("/api/orders/" + oid + "/complaint").content(issue), student, 409); // one per order
+        call(post("/api/orders/" + oid + "/complaint").content("{\"category\":\"OTHER\",\"details\":\"short\"}"), student, 400);
+
+        // Nobody else sees it; admins do, and are told about it.
+        assertThat(call(get("/api/orders/" + oid + "/complaint"), other, 200).isNull()).isTrue();
+        call(get("/api/admin/complaints"), student, 403);
+        JsonNode open = call(get("/api/admin/complaints?status=OPEN"), admin, 200);
+        assertThat(open.findValuesAsText("id")).contains(String.valueOf(cid));
+        call(get("/api/admin/complaints"), admin, 200);
+        call(get("/api/admin/complaints?status=RESOLVED&canteenId=" + order.get("canteenId").asLong()), admin, 200);
+        assertThat(call(get("/api/notifications"), admin, 200).get("items").get(0).get("type").asText()).isEqualTo("COMPLAINT");
+
+        // A short conversation.
+        call(post("/api/admin/complaints/" + cid + "/messages").content("{\"text\":\"Sorry! Was it the 1 pm batch?\"}"), admin, 200);
+        JsonNode mine = call(post("/api/orders/" + oid + "/complaint/messages").content("{\"text\":\"Yes, around 1:10.\"}"), student, 200);
+        assertThat(mine.get("messages").size()).isEqualTo(2);
+        assertThat(mine.get("messages").get(0).get("fromStaff").asBoolean()).isTrue();
+        assertThat(call(get("/api/notifications"), student, 200).get("items").get(0).get("type").asText()).isEqualTo("COMPLAINT");
+
+        // Refund: never more than was paid, and only once.
+        call(post("/api/admin/complaints/" + cid + "/resolve").content("{\"refund\":181,\"note\":\"x\"}"), admin, 400);
+        JsonNode done = call(post("/api/admin/complaints/" + cid + "/resolve").content("{\"refund\":90,\"note\":\"Refunded one thali.\"}"), admin, 200);
+        assertThat(done.get("status").asText()).isEqualTo("RESOLVED");
+        assertThat(done.get("refundAmount").decimalValue()).isEqualByComparingTo("90");
+        call(post("/api/admin/complaints/" + cid + "/resolve").content("{\"refund\":90}"), admin, 409);
+        call(post("/api/admin/complaints/" + cid + "/reject").content("{\"note\":\"x\"}"), admin, 409);
+        assertThat(call(get("/api/wallet"), student, 200).get("balance").decimalValue()).isEqualByComparingTo("410");
+        call(post("/api/orders/" + oid + "/complaint/messages").content("{\"text\":\"Thanks\"}"), student, 400); // closed
+
+        JsonNode stats = call(get("/api/admin/complaints/stats"), admin, 200);
+        assertThat(stats.get("total30d").asLong()).isGreaterThanOrEqualTo(1);
+        assertThat(stats.get("refunded30d").decimalValue()).isGreaterThanOrEqualTo(new java.math.BigDecimal("90"));
+        assertThat(stats.get("topDishes").findValuesAsText("name")).contains("Veg Thali");
+        call(get("/api/admin/complaints/stats?canteenId=" + order.get("canteenId").asLong()), admin, 200);
+        assertThat(call(get("/api/admin/audit?q=COMPLAINT"), admin, 200).toString()).contains("COMPLAINT_RESOLVED");
+        assertThat(call(get("/api/orders/complaints"), student, 200).size()).isEqualTo(1);
+    }
+
+    @Test
+    void complaintsOnlyWithinTheWindowAndCashNoShowsGetNoRefund() throws Exception {
+        String student = register("late" + UUID.randomUUID() + "@college.edu");
+        String admin = login("admin@tulas.local", "Admin@123");
+        String kitchen = login("kitchen@tulas.local", "kitchen123");
+        long chai = idOf(call(get("/api/menu"), student, 200), "Masala Chai");
+
+        // Cash order that was never collected: complaint allowed, but nothing was paid, so no refund.
+        JsonNode noShow = call(post("/api/orders").content(orderJson(chai, 1, "CASH", 0)), student, 201);
+        call(post("/api/kitchen/orders/" + noShow.get("id").asLong() + "/status").content("{\"status\":\"READY\"}"), kitchen, 200);
+        call(post("/api/kitchen/orders/" + noShow.get("id").asLong() + "/status").content("{\"status\":\"NO_SHOW\"}"), kitchen, 200);
+        JsonNode c = call(post("/api/orders/" + noShow.get("id").asLong() + "/complaint")
+                .content("{\"category\":\"LATE\",\"details\":\"I came at 1:30 and it still wasn't ready.\"}"), student, 201);
+        assertThat(c.get("maxRefund").decimalValue()).isEqualByComparingTo("0");
+        call(post("/api/admin/complaints/" + c.get("id").asLong() + "/resolve").content("{\"refund\":10}"), admin, 400);
+        call(post("/api/admin/complaints/" + c.get("id").asLong() + "/reject").content("{\"note\":\"\"}"), admin, 400);
+        JsonNode rejected = call(post("/api/admin/complaints/" + c.get("id").asLong() + "/reject")
+                .content("{\"note\":\"The kitchen log shows it was ready at 1:05.\"}"), admin, 200);
+        assertThat(rejected.get("status").asText()).isEqualTo("REJECTED");
+
+        // Too late: more than 48 hours after pickup.
+        JsonNode old = call(post("/api/orders").content(orderJson(chai, 1, "CASH", 0)), student, 201);
+        collect(old, kitchen);
+        var o = orderRepo.findById(old.get("id").asLong()).orElseThrow();
+        o.setClosedAt(java.time.Instant.now().minus(java.time.Duration.ofDays(3)));
+        orderRepo.save(o);
+        call(post("/api/orders/" + old.get("id").asLong() + "/complaint")
+                .content("{\"category\":\"QUALITY\",\"details\":\"The chai was too sweet for me.\"}"), student, 400);
+    }
+
+    @Test
+    void dishReviewsCountOnceAndSuspiciousWordsWaitForAnAdmin() throws Exception {
+        String student = register("critic" + UUID.randomUUID() + "@college.edu");
+        String admin = login("admin@tulas.local", "Admin@123");
+        String kitchen = login("kitchen@tulas.local", "kitchen123");
+        JsonNode menu = call(get("/api/menu"), student, 200);
+        long thali = idOf(menu, "Veg Thali"), chai = idOf(menu, "Masala Chai"), samosa = idOf(menu, "Poha");
+        String two = "{\"items\":[{\"menuItemId\":" + thali + ",\"quantity\":1},{\"menuItemId\":" + chai
+                + ",\"quantity\":1}],\"paymentMethod\":\"CASH\"}";
+
+        JsonNode order = call(post("/api/orders").content(two), student, 201);
+        long oid = order.get("id").asLong();
+        String review = "{\"menuItemId\":" + thali + ",\"stars\":2,\"comment\":\"Too salty today\"}";
+        call(post("/api/orders/" + oid + "/reviews").content(review), student, 400); // not collected yet
+        collect(order, kitchen);
+
+        int[] t0 = rating(thali), c0 = rating(chai);
+        call(post("/api/orders/" + oid + "/rate").content("{\"stars\":4}"), student, 200);
+        assertThat(rating(thali)).containsExactly(t0[0] + 4, t0[1] + 1);
+
+        // The dish review replaces the order's 4 stars for that dish (no second vote).
+        JsonNode r = call(post("/api/orders/" + oid + "/reviews").content(review), student, 200);
+        assertThat(r.get("status").asText()).isEqualTo("VISIBLE");
+        assertThat(rating(thali)).containsExactly(t0[0] + 2, t0[1] + 1);
+        JsonNode pub = call(get("/api/reviews/dish/" + thali), register("reader" + UUID.randomUUID() + "@college.edu"), 200);
+        assertThat(pub.get("reviews").get(0).get("comment").asText()).isEqualTo("Too salty today");
+        assertThat(pub.get("reviews").get(0).get("author").asText()).isEqualTo("Test S.");
+        assertThat(pub.get("reviews").get(0).get("mine").asBoolean()).isFalse();
+
+        // A phone number is held back until an admin looks at it.
+        JsonNode held = call(post("/api/orders/" + oid + "/reviews")
+                .content("{\"menuItemId\":" + chai + ",\"stars\":5,\"comment\":\"Best chai! Call me on 98765 43210\"}"), student, 200);
+        assertThat(held.get("status").asText()).isEqualTo("FLAGGED");
+        assertThat(rating(chai)).containsExactly(c0[0] + 5, c0[1] + 1);
+        assertThat(call(get("/api/reviews/dish/" + chai), student, 200).get("reviews").findValuesAsText("comment"))
+                .doesNotContain("Best chai! Call me on 98765 43210");
+        JsonNode queue = call(get("/api/admin/reviews?status=FLAGGED"), admin, 200);
+        assertThat(queue.findValuesAsText("flagReason")).contains("Contains a phone number");
+        call(get("/api/admin/reviews"), admin, 200);
+        assertThat(call(get("/api/admin/dashboard"), admin, 200).get("flaggedReviews").asLong()).isGreaterThanOrEqualTo(1);
+        call(post("/api/admin/reviews/" + held.get("id").asLong() + "/moderate").content("{\"status\":\"VISIBLE\"}"), admin, 200);
+        assertThat(call(get("/api/reviews/dish/" + chai), student, 200).get("reviews").get(0).get("mine").asBoolean()).isTrue();
+
+        // Hidden by an admin: editing the words sends it back for a check instead of straight back up.
+        call(post("/api/admin/reviews/" + r.get("id").asLong() + "/moderate").content("{\"status\":\"HIDDEN\",\"reason\":\"Not about the food\"}"), admin, 200);
+        assertThat(call(get("/api/reviews/dish/" + thali), student, 200).get("reviews").findValuesAsText("comment")).doesNotContain("Too salty today");
+        JsonNode edited = call(post("/api/orders/" + oid + "/reviews")
+                .content("{\"menuItemId\":" + thali + ",\"stars\":3,\"comment\":\"A bit salty\"}"), student, 200);
+        assertThat(edited.get("status").asText()).isEqualTo("FLAGGED");
+        assertThat(rating(thali)).containsExactly(t0[0] + 3, t0[1] + 1);
+        assertThat(call(get("/api/orders/" + oid + "/reviews"), student, 200).size()).isEqualTo(2);
+
+        call(post("/api/orders/" + oid + "/reviews").content("{\"menuItemId\":" + samosa + ",\"stars\":5}"), student, 400);
+        call(post("/api/orders/" + oid + "/reviews").content("{\"menuItemId\":" + thali + ",\"stars\":6}"), student, 400);
+
+        // Reviewed first, rated after: the order's stars skip the reviewed dish.
+        JsonNode second = call(post("/api/orders").content(orderJson(thali, 1, "CASH", 0)), student, 201);
+        collect(second, kitchen);
+        int[] t1 = rating(thali);
+        call(post("/api/orders/" + second.get("id").asLong() + "/reviews").content("{\"menuItemId\":" + thali + ",\"stars\":5}"), student, 200);
+        call(post("/api/orders/" + second.get("id").asLong() + "/rate").content("{\"stars\":1}"), student, 200);
+        assertThat(rating(thali)).containsExactly(t1[0] + 5, t1[1] + 1);
+    }
+
+    /** [ratingSum, ratingCount] of a dish, straight from the database. */
+    private int[] rating(long dishId) {
+        var m = menuRepo.findById(dishId).orElseThrow();
+        return new int[]{m.getRatingSum(), m.getRatingCount()};
+    }
+
     // ---- helpers
 
     private static String orderJson(long dishId, int qty, String pay, int redeemPoints) {

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, BellRing, CircleAlert, Gift, IndianRupee, PackageX, RotateCcw, Wallet } from 'lucide-react'
+import { Bell, BellRing, CircleAlert, Gift, IndianRupee, MessageSquareWarning, PackageX, RotateCcw, Wallet } from 'lucide-react'
 import { api, dateOf, timeOf } from '../api'
 import { useLive } from '../context/LiveContext'
 import { Card, Empty, ErrorNote, PageTitle, Spinner } from '../components/ui'
 
-const ICON = { ORDER_READY: BellRing, REFUND: RotateCcw, PAYMENT: IndianRupee, TOPUP: Wallet, WALLET: Wallet, POINTS: Gift, LOW_STOCK: PackageX, NO_SHOW: CircleAlert }
+const ICON = { ORDER_READY: BellRing, REFUND: RotateCcw, PAYMENT: IndianRupee, TOPUP: Wallet, WALLET: Wallet, POINTS: Gift, LOW_STOCK: PackageX, NO_SHOW: CircleAlert, COMPLAINT: MessageSquareWarning }
 
 export default function Notifications() {
   const nav = useNavigate()

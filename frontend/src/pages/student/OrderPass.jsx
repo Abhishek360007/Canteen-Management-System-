@@ -5,6 +5,7 @@ import { api, rupees, slotLabel, timeOf } from '../../api'
 import { useLive } from '../../context/LiveContext'
 import { QrImage, qrPayload } from '../../components/Qr'
 import PushToggle from '../../components/PushToggle'
+import { DishReviewsPanel, OrderComplaint } from '../../components/Feedback'
 import { Button, Card, ErrorNote, Spinner, StatusBadge, useToast } from '../../components/ui'
 
 const STEPS = [['PLACED', 'Placed'], ['PREPARING', 'Cooking'], ['READY', 'Ready'], ['COLLECTED', 'Collected']]
@@ -164,8 +165,12 @@ export default function OrderPass() {
               </button>
             ))}
           </div>
+          {!order.rating && <p className="mt-1 text-xs text-muted">Or rate each dish below</p>}
         </Card>
       )}
+
+      {order.status === 'COLLECTED' && <DishReviewsPanel order={order} />}
+      {['COLLECTED', 'NO_SHOW'].includes(order.status) && <OrderComplaint order={order} />}
     </>
   )
 }

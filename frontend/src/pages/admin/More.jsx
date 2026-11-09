@@ -1,20 +1,27 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CreditCard, Store, TrendingUp, Boxes, ChefHat, ChevronRight, History, IndianRupee, Megaphone, ScanLine, Settings, Smartphone, User } from 'lucide-react'
+import { MessageSquareWarning, Star, CreditCard, Store, TrendingUp, Boxes, ChefHat, ChevronRight, History, IndianRupee, Megaphone, ScanLine, Settings, Smartphone, User } from 'lucide-react'
 import { api } from '../../api'
 import { useLive } from '../../context/LiveContext'
 import { Card, PageTitle } from '../../components/ui'
 
 export default function More() {
   const [pending, setPending] = useState(0)
+  const [feedback, setFeedback] = useState({ open: 0, flaggedReviews: 0 })
   const load = useCallback(() => api('/api/admin/topups?status=PENDING').then((l) => setPending(l.length)).catch(() => {}), [])
-  useEffect(() => { load() }, [load])
+  const loadFeedback = useCallback(() => api('/api/admin/complaints/stats').then(setFeedback).catch(() => {}), [])
+  useEffect(() => { load(); loadFeedback() }, [load, loadFeedback])
   useLive('topup', load)
+  useLive('complaint', loadFeedback)
 
   const groups = [
     ['Planning', [
       ['/admin/canteens', 'Canteens & comparison', Store],
       ['/admin/insights', 'Forecast & insights', TrendingUp],
+    ]],
+    ['Feedback', [
+      ['/admin/complaints', 'Complaints', MessageSquareWarning, feedback.open],
+      ['/admin/reviews', 'Dish reviews', Star, feedback.flaggedReviews],
     ]],
     ['Money', [
       ['/admin/payments', 'Online payments (Razorpay)', CreditCard],

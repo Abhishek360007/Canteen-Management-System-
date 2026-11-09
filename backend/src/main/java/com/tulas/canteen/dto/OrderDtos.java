@@ -35,7 +35,7 @@ public final class OrderDtos {
     public record RateRequest(@Min(1) @Max(5) int stars) {}
 
     public record LineView(Long menuItemId, String name, BigDecimal unitPrice, int quantity, BigDecimal lineTotal) {
-        static LineView of(OrderItem i) {
+        public static LineView of(OrderItem i) {
             return new LineView(i.getMenuItemId(), i.getName(), i.getUnitPrice(), i.getQuantity(), i.getLineTotal());
         }
     }

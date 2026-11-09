@@ -59,6 +59,13 @@ public class WalletService {
         record(userId, TxnType.REFUND, amount, "Refund for order " + orderCode, "system");
     }
 
+    /** Goodwill refund when a complaint is resolved (also for orders paid in cash: it goes to the wallet). */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void complaintRefund(Long userId, BigDecimal amount, String orderCode, String adminName) {
+        users.credit(userId, amount);
+        record(userId, TxnType.REFUND, amount, "Refund for your complaint on order " + orderCode, adminName);
+    }
+
     @Transactional(readOnly = true)
     public WalletView view(Long userId) {
         return new WalletView(users.balanceOf(userId),

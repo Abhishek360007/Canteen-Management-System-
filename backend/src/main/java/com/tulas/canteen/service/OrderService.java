@@ -44,13 +44,15 @@ public class OrderService {
     private final Clock clock;
     private final LoyaltyService loyalty;
     private final NotificationService notifications;
+    private final ReviewService reviews;
     private final TransactionTemplate tx;
     private final SecureRandom random = new SecureRandom();
 
     public OrderService(OrderRepository orders, MenuItemRepository menu, UserRepository users,
                         OrderCounterRepository orderCounters, CounterService counterService, WalletService wallet,
                         CanteenService canteens, LiveHub live, Clock clock, PlatformTransactionManager txm, LoyaltyService loyalty,
-                        NotificationService notifications) {
+                        NotificationService notifications, ReviewService reviews) {
+        this.reviews = reviews;
         this.notifications = notifications;
         this.tx = new TransactionTemplate(txm);
         this.loyalty = loyalty;
@@ -226,8 +228,10 @@ public class OrderService {
         if (o.getStatus() != OrderStatus.COLLECTED) throw ApiException.badRequest("You can rate an order after collecting it.");
         if (o.getRating() != null) throw ApiException.badRequest("You've already rated this order.");
         o.setRating(stars);
-        menu.findAllById(o.getItems().stream().map(OrderItem::getMenuItemId).toList())
-                .forEach(m -> m.addRating(stars));
+        // Dishes the student already reviewed one by one keep their own stars instead of getting a second vote.
+        Set<Long> reviewed = reviews.reviewedDishes(o.getId());
+        o.getItems().stream().map(OrderItem::getMenuItemId).distinct().filter(d -> !reviewed.contains(d))
+                .forEach(d -> menu.addRating(d, stars, 1));
         return studentView(o);
     }
 

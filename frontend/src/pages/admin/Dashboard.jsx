@@ -17,6 +17,7 @@ export default function Dashboard() {
   useEffect(() => { load() }, [load])
   useLive('order', load)
   useLive('topup', load)
+  useLive('complaint', load)
 
   if (error) return <ErrorNote>{error}</ErrorNote>
   if (!d) return <Spinner />
@@ -51,6 +52,12 @@ export default function Dashboard() {
       {d.pendingTopups > 0 && (
         <Link to="/admin/topups" className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-warn-soft p-3.5 text-sm font-medium text-warn">
           <span>{d.pendingTopups} UPI top-up{d.pendingTopups > 1 ? 's' : ''} waiting for approval</span>
+          <span className="flex items-center gap-1 font-semibold">Review <ChevronRight className="size-4" /></span>
+        </Link>
+      )}
+      {d.openComplaints > 0 && (
+        <Link to="/admin/complaints" className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-bad-soft p-3.5 text-sm font-medium text-bad">
+          <span>{d.openComplaints} open complaint{d.openComplaints > 1 ? 's' : ''} from students</span>
           <span className="flex items-center gap-1 font-semibold">Review <ChevronRight className="size-4" /></span>
         </Link>
       )}

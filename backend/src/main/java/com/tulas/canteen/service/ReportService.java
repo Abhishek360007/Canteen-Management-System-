@@ -26,9 +26,14 @@ public class ReportService {
     private final OrderRepository orders;
     private final UserRepository users;
     private final TopupRequestRepository topups;
+    private final com.tulas.canteen.repo.ComplaintRepository complaints;
+    private final com.tulas.canteen.repo.DishReviewRepository reviews;
     private final Clock clock;
 
-    public ReportService(OrderRepository orders, UserRepository users, TopupRequestRepository topups, Clock clock) {
+    public ReportService(OrderRepository orders, UserRepository users, TopupRequestRepository topups, Clock clock,
+                         com.tulas.canteen.repo.ComplaintRepository complaints, com.tulas.canteen.repo.DishReviewRepository reviews) {
+        this.complaints = complaints;
+        this.reviews = reviews;
         this.orders = orders;
         this.users = users;
         this.topups = topups;
@@ -68,6 +73,8 @@ public class ReportService {
                 count(todays, OrderStatus.NO_SHOW),
                 count(todays, OrderStatus.CANCELLED),
                 topups.countByStatus(TopupRequest.Status.PENDING),
+                complaints.countByStatus(com.tulas.canteen.domain.Complaint.Status.OPEN),
+                reviews.countByStatus(com.tulas.canteen.domain.DishReview.Status.FLAGGED),
                 days,
                 topItems(week, 5),
                 busy);

@@ -8,6 +8,7 @@ import { useCanteens } from '../../context/CanteenContext'
 import { useLive } from '../../context/LiveContext'
 import { DishArt } from '../../components/Brand'
 import { RecStrip } from '../../components/Recs'
+import { DishReviewsModal } from '../../components/Feedback'
 import { Empty, ErrorNote, Spinner, VegDot, useToast } from '../../components/ui'
 
 const CATS = [
@@ -32,6 +33,7 @@ export default function Menu() {
   const [q, setQ] = useState('')
   const [vegOnly, setVegOnly] = useState(false)
   const [recs, setRecs] = useState(null)
+  const [reviewing, setReviewing] = useState(null)
 
   const load = useCallback(() =>
     api('/api/menu').then((m) => { setMenu(m); cart.sync(m) }).catch((e) => setError(e.message)),
@@ -157,7 +159,7 @@ export default function Menu() {
         {shown.map((item) => (
           <DishCard key={item.id} item={item} qty={cart.qtyOf(item.id)} disabled={closed}
             onAdd={() => addItem(item)} menuById={menuById} onAddOther={addItem}
-            onRemove={() => cart.remove(item.id)} onFav={() => toggleFav(item)} />
+            onRemove={() => cart.remove(item.id)} onFav={() => toggleFav(item)} onReviews={() => setReviewing(item)} />
         ))}
       </div>
 
@@ -168,11 +170,12 @@ export default function Menu() {
           <span className="flex items-center gap-1">View cart <ArrowRight className="size-4" /></span>
         </Link>
       )}
+      <DishReviewsModal item={reviewing} onClose={() => setReviewing(null)} />
     </>
   )
 }
 
-function DishCard({ item, qty, onAdd, onRemove, onFav, disabled, menuById, onAddOther }) {
+function DishCard({ item, qty, onAdd, onRemove, onFav, onReviews, disabled, menuById, onAddOther }) {
   const low = item.stockToday != null && item.stockToday > 0 && item.stockToday <= 5
   const [alts, setAlts] = useState(null)
   const showAlts = () => api(`/api/recommendations/similar/${item.id}`).then(setAlts).catch(() => setAlts([]))
@@ -192,7 +195,11 @@ function DishCard({ item, qty, onAdd, onRemove, onFav, disabled, menuById, onAdd
         </div>
         {item.description && <p className="mt-0.5 line-clamp-2 text-xs text-muted">{item.description}</p>}
         <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-ink-2">
-          {item.rating && <span className="flex items-center gap-0.5"><Star className="size-3 fill-warn text-warn" />{item.rating} ({item.ratingCount})</span>}
+          {item.rating && (
+            <button onClick={onReviews} className="flex items-center gap-0.5 underline-offset-2 hover:underline" aria-label={`${item.rating} stars from ${item.ratingCount} ratings. See reviews`}>
+              <Star className="size-3 fill-warn text-warn" />{item.rating} ({item.ratingCount})
+            </button>
+          )}
           <span>~{item.prepMinutes} min</span>
           {low && <span className="font-semibold text-bad">Only {item.stockToday} left</span>}
         </div>

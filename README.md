@@ -49,6 +49,11 @@ by checking the student's order number and 4-digit pickup code (or scanning thei
 - **Live status** (Placed → Cooking → Ready → Collected), queue position and estimated wait, with no page refresh
 - Phone notification and vibration when the food is ready
 - Cancel before cooking starts (instant wallet refund); rate the order after collecting
+- **Dish reviews**: stars and a few words for each dish of a collected order; tap a dish's rating on the menu to
+  read what other students said
+- **Report a problem** with an order (wrong item, missing item, cold food, small portion, hygiene, late…) up to
+  48 hours after pickup, pick the dishes it's about, and talk it through with the canteen in a chat-style thread;
+  refunds go straight to the wallet
 - Wallet page with balance, full transaction history and monthly spending
 - **Pay online with Razorpay** (UPI, cards, netbanking, wallets): add money to the wallet instantly, or at checkout
   "Pay ₹X online & place order" pays just the amount the wallet is short
@@ -84,6 +89,11 @@ by checking the student's order number and 4-digit pickup code (or scanning thei
 - **Activity log**: who recharged, approved, refunded, blocked, reset a password or changed the menu, and when
 - All orders with date and status filters, plus **CSV export** for Excel
 - Announcements shown at the top of every student's screen
+- **Complaints**: open / resolved / closed lists per canteen, reply in the thread (with quick replies), then
+  **resolve with a wallet refund** (one tap for a dish or the whole order, never more than the student paid) or
+  close with a reason. 30-day summary: what goes wrong most, which dishes are named, refunds, average time to close
+- **Review moderation**: reviews whose words look like a link, phone number, email or abuse wait for a check;
+  admins can show or hide any review's words (its stars still count, so moderation can't bend a dish's rating)
 - Canteens: opening hours, max orders in progress per student, max plates of one dish, no-show hold time, cash on/off
 - **Forecast & insights**:
   - **Demand forecast** per dish for any of the next 7 days, with a likely range and a recommended number of plates
@@ -101,6 +111,9 @@ by checking the student's order number and 4-digit pickup code (or scanning thei
 - **No double hand-over.** Orders use optimistic locking, so two staff phones can't both hand over the same order.
 - **Wallet ledger.** Every recharge, payment and refund is recorded with the balance afterwards.
 - **Live updates** with Server-Sent Events, sent only after the database change is committed.
+- **Fair ratings and refunds**: each student's order counts once per dish (a dish review replaces the order's stars
+  for that dish instead of adding a second vote), rating totals change with single atomic `UPDATE`s, and a complaint
+  can be refunded only once (optimistic locking) and only up to what was actually paid (a cash no-show paid nothing).
 - **Background jobs**: ready food not collected within the hold time becomes a no-show and its plates go back
   on sale; unfinished orders from earlier days are cancelled and refunded; stock resets every morning at 5 AM.
 - Role-based access (Student / Staff / Admin) on every API path; blocked users are logged out immediately.
@@ -127,7 +140,7 @@ by checking the student's order number and 4-digit pickup code (or scanning thei
   Razorpay keys live only in server environment variables. Tested against a fake Razorpay API on H2 and PostgreSQL.
 - **No lost updates**: saving an unrelated change (like blocking a user) never overwrites a wallet balance, points
   total or plates-left that changed at the same moment.
-- Tests (54) run on both H2 and a real PostgreSQL server, including concurrency, forecasting and multi-canteen.
+- Tests (60) run on both H2 and a real PostgreSQL server, including concurrency, forecasting, multi-canteen, complaints and reviews.
 - Swagger API docs, an integration test for the whole order flow, light and dark mode, and a mobile-first layout.
 
 ## Tech stack
